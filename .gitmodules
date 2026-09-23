@@ -1,0 +1,6 @@
+[submodule "external/GlucoSim"]
+	path = external/GlucoSim
+	url = https://github.com/safe-autonomy-lab/GlucoSim.git
+[submodule "external/GlucoAlg"]
+	path = external/GlucoAlg
+	url = https://github.com/safe-autonomy-lab/GlucoAlg.git
