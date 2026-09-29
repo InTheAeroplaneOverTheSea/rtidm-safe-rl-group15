@@ -19,3 +19,16 @@ venv/
 # Common temporary files
 *.log
 *.tmp
+
+# Slurm and local evaluation outputs
+slurm-*.out
+diabetes_evaluation/
+external/*/diabetes_evaluation/
+surf_environment_freeze.txt
+
+# Test and tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/

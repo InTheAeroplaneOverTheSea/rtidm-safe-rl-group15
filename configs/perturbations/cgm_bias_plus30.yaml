@@ -1,0 +1,6 @@
+version: 1
+name: cgm_bias_plus30
+observation:
+  - type: persistent_cgm_bias
+    parameters:
+      bias_mgdl: 30.0
