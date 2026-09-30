@@ -1,0 +1,15 @@
+diff --git a/glucosim/gym_env/wrappers/rendering.py b/glucosim/gym_env/wrappers/rendering.py
+index 75fd0b5..5cad1ce 100644
+--- a/glucosim/gym_env/wrappers/rendering.py
++++ b/glucosim/gym_env/wrappers/rendering.py
+@@ -16 +16 @@
+-from typing import Any, Generic, SupportsFloat
++from typing import Any, Generic, SupportsFloat, TypeVar
+@@ -22 +22 @@
+-from gymnasium.core import ActType, ObsType, RenderFrame
++from gymnasium.core import ActType, ObsType
+@@ -24,0 +25,4 @@
++# Python 3.13 / gymnasium>=1.3 compatibility only: RenderFrame is now a
++# union and therefore cannot be passed to Generic[...].
++RenderFrame = TypeVar("RenderFrame")
++
