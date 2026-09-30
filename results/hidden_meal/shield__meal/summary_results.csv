@@ -1,0 +1,20 @@
+Metric,Value
+Mean Episode Reward,-242.094 ± 0.000
+Mean Episode Cost,2450.166 ± 0.000
+Mean Episode Length,2016.0 ± 0.0
+Mean Time in Range (%),79.4%
+Mean Risk Index,7.617
+Mean SD (mg/dL),50.566
+Mean CV (%),28.946
+Mean MAG (mg/dL/min),0.5259
+Mean MAGE (mg/dL),112.510
+Mean Glucose (mg/dL),174.7 mg/dL
+Mean Meal Recommendations per 24h,6.714 ± 0.000
+Mean Bolus Recommendations per 24h,10.714 ± 0.000
+Mean Time Below 70 mg/dL (%),0.000%
+Mean Time Above 180 mg/dL (%),20.585%
+Mean Time Above 250 mg/dL (%),6.696%
+Total Hypoglycemic Excursions (<70),0
+Total Hyperglycemic Excursions (>180),27
+Total Severe Hyperglycemic Excursions (>250),2
+Observation Perturbation,"{""name"": ""hidden_meal_m720_g60_16ad943d"", ""observation"": [], ""output_tag"": ""hidden_meal_m720_g60_16ad943d"", ""physiology"": {""announced_in_meal_preview"": false, ""frequency"": ""once_per_episode"", ""parameters"": {""grams"": 60.0, ""minute"": 720}, ""type"": ""hidden_meal""}}"

@@ -1,0 +1,77 @@
+condition,Metric,Value
+no_shield__clean,Mean Episode Reward,-241.413 ± 0.000
+no_shield__clean,Mean Episode Cost,436.206 ± 0.000
+no_shield__clean,Mean Episode Length,2016.0 ± 0.0
+no_shield__clean,Mean Time in Range (%),86.0%
+no_shield__clean,Mean Risk Index,4.818
+no_shield__clean,Mean SD (mg/dL),15.515
+no_shield__clean,Mean CV (%),9.590
+no_shield__clean,Mean MAG (mg/dL/min),0.4851
+no_shield__clean,Mean MAGE (mg/dL),17.306
+no_shield__clean,Mean Glucose (mg/dL),161.8 mg/dL
+no_shield__clean,Mean Meal Recommendations per 24h,5.429 ± 0.000
+no_shield__clean,Mean Bolus Recommendations per 24h,10.571 ± 0.000
+no_shield__clean,Mean Time Below 70 mg/dL (%),0.000%
+no_shield__clean,Mean Time Above 180 mg/dL (%),14.038%
+no_shield__clean,Mean Time Above 250 mg/dL (%),0.000%
+no_shield__clean,Total Hypoglycemic Excursions (<70),0
+no_shield__clean,Total Hyperglycemic Excursions (>180),32
+no_shield__clean,Total Severe Hyperglycemic Excursions (>250),0
+no_shield__clean,Observation Perturbation,"{""name"": ""hidden_meal_m720_g0_16ad943d"", ""observation"": [], ""output_tag"": ""hidden_meal_m720_g0_16ad943d"", ""physiology"": {""announced_in_meal_preview"": false, ""frequency"": ""once_per_episode"", ""parameters"": {""grams"": 0.0, ""minute"": 720}, ""type"": ""hidden_meal""}}"
+no_shield__meal,Mean Episode Reward,-303.646 ± 0.000
+no_shield__meal,Mean Episode Cost,2628.228 ± 0.000
+no_shield__meal,Mean Episode Length,2016.0 ± 0.0
+no_shield__meal,Mean Time in Range (%),76.7%
+no_shield__meal,Mean Risk Index,8.156
+no_shield__meal,Mean SD (mg/dL),53.422
+no_shield__meal,Mean CV (%),30.110
+no_shield__meal,Mean MAG (mg/dL/min),0.5208
+no_shield__meal,Mean MAGE (mg/dL),134.413
+no_shield__meal,Mean Glucose (mg/dL),177.4 mg/dL
+no_shield__meal,Mean Meal Recommendations per 24h,5.857 ± 0.000
+no_shield__meal,Mean Bolus Recommendations per 24h,10.429 ± 0.000
+no_shield__meal,Mean Time Below 70 mg/dL (%),0.000%
+no_shield__meal,Mean Time Above 180 mg/dL (%),23.313%
+no_shield__meal,Mean Time Above 250 mg/dL (%),7.837%
+no_shield__meal,Total Hypoglycemic Excursions (<70),0
+no_shield__meal,Total Hyperglycemic Excursions (>180),28
+no_shield__meal,Total Severe Hyperglycemic Excursions (>250),1
+no_shield__meal,Observation Perturbation,"{""name"": ""hidden_meal_m720_g60_16ad943d"", ""observation"": [], ""output_tag"": ""hidden_meal_m720_g60_16ad943d"", ""physiology"": {""announced_in_meal_preview"": false, ""frequency"": ""once_per_episode"", ""parameters"": {""grams"": 60.0, ""minute"": 720}, ""type"": ""hidden_meal""}}"
+shield__clean,Mean Episode Reward,-241.902 ± 0.000
+shield__clean,Mean Episode Cost,434.776 ± 0.000
+shield__clean,Mean Episode Length,2016.0 ± 0.0
+shield__clean,Mean Time in Range (%),86.0%
+shield__clean,Mean Risk Index,4.811
+shield__clean,Mean SD (mg/dL),15.498
+shield__clean,Mean CV (%),9.582
+shield__clean,Mean MAG (mg/dL/min),0.4848
+shield__clean,Mean MAGE (mg/dL),17.306
+shield__clean,Mean Glucose (mg/dL),161.7 mg/dL
+shield__clean,Mean Meal Recommendations per 24h,5.429 ± 0.000
+shield__clean,Mean Bolus Recommendations per 24h,10.714 ± 0.000
+shield__clean,Mean Time Below 70 mg/dL (%),0.000%
+shield__clean,Mean Time Above 180 mg/dL (%),13.988%
+shield__clean,Mean Time Above 250 mg/dL (%),0.000%
+shield__clean,Total Hypoglycemic Excursions (<70),0
+shield__clean,Total Hyperglycemic Excursions (>180),32
+shield__clean,Total Severe Hyperglycemic Excursions (>250),0
+shield__clean,Observation Perturbation,"{""name"": ""hidden_meal_m720_g0_16ad943d"", ""observation"": [], ""output_tag"": ""hidden_meal_m720_g0_16ad943d"", ""physiology"": {""announced_in_meal_preview"": false, ""frequency"": ""once_per_episode"", ""parameters"": {""grams"": 0.0, ""minute"": 720}, ""type"": ""hidden_meal""}}"
+shield__meal,Mean Episode Reward,-242.094 ± 0.000
+shield__meal,Mean Episode Cost,2450.166 ± 0.000
+shield__meal,Mean Episode Length,2016.0 ± 0.0
+shield__meal,Mean Time in Range (%),79.4%
+shield__meal,Mean Risk Index,7.617
+shield__meal,Mean SD (mg/dL),50.566
+shield__meal,Mean CV (%),28.946
+shield__meal,Mean MAG (mg/dL/min),0.5259
+shield__meal,Mean MAGE (mg/dL),112.510
+shield__meal,Mean Glucose (mg/dL),174.7 mg/dL
+shield__meal,Mean Meal Recommendations per 24h,6.714 ± 0.000
+shield__meal,Mean Bolus Recommendations per 24h,10.714 ± 0.000
+shield__meal,Mean Time Below 70 mg/dL (%),0.000%
+shield__meal,Mean Time Above 180 mg/dL (%),20.585%
+shield__meal,Mean Time Above 250 mg/dL (%),6.696%
+shield__meal,Total Hypoglycemic Excursions (<70),0
+shield__meal,Total Hyperglycemic Excursions (>180),27
+shield__meal,Total Severe Hyperglycemic Excursions (>250),2
+shield__meal,Observation Perturbation,"{""name"": ""hidden_meal_m720_g60_16ad943d"", ""observation"": [], ""output_tag"": ""hidden_meal_m720_g60_16ad943d"", ""physiology"": {""announced_in_meal_preview"": false, ""frequency"": ""once_per_episode"", ""parameters"": {""grams"": 60.0, ""minute"": 720}, ""type"": ""hidden_meal""}}"

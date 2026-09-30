@@ -1,0 +1,26 @@
+{
+  "patient": "adolescent#010",
+  "policy_seed": 0,
+  "eval_seed": 22,
+  "num_episodes": 5,
+  "meal_minute": null,
+  "meal_grams": 60.0,
+  "hyper_check_threshold": 170.0,
+  "logit_penalty": 10.0,
+  "perturbation_config": "C:\\Users\\20233416\\Documents\\DC1\\rtidm-safe-rl-group15\\configs\\perturbations\\hidden_meal.yaml",
+  "output_dir": "results\\hidden_meal_fixed_60g",
+  "meal": {
+    "type": "hidden_meal",
+    "parameters": {
+      "minute": 720,
+      "grams": 60.0
+    },
+    "frequency": "once_per_episode",
+    "announced_in_meal_preview": false
+  },
+  "horizon_days": 7,
+  "premeal_checks_passed": true,
+  "top_k_bolus_levels": 2,
+  "context_examples": 20,
+  "threshold_status": "group smoke setting; not a calibrated reproduction"
+}

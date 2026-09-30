@@ -1,0 +1,24 @@
+diff --git a/glucosim/simglucose/sim/step.py b/glucosim/simglucose/sim/step.py
+index c374451..9f482c6 100644
+--- a/glucosim/simglucose/sim/step.py
++++ b/glucosim/simglucose/sim/step.py
+@@ -68,6 +68,10 @@ def mini_step(state: dict, patient_action: Action, env_params: EnvParams, skip_s
+         patient_action.meal,
+         jnp.maximum(scenario_meal, patient_action.meal)
+     )
++    # An external meal enters physiology without changing the announced scenario
++    # or the controller's accepted meal action. The schedule is added after reset.
++    if 'hidden_meals' in state:
++        meal_g = meal_g + state['hidden_meals'][current_total_minutes]
+ 
+     patient_action_for_ode = Action(meal=meal_g, bolus=bolus_U, exercise=ex_intensity)
+     new_patient_state = patient_step(
+@@ -78,6 +82,8 @@ def mini_step(state: dict, patient_action: Action, env_params: EnvParams, skip_s
+         cfg=noise_config,
+         eat_rate_per_min=eat_rate_per_min
+     )
++    if 'hidden_meals' in state:
++        new_patient_state = {**new_patient_state, 'hidden_meals': state['hidden_meals']}
+     # Extract results from the new patient state
+     BG = new_patient_state['patient_state'][3] / patient_params.Vg
+     CGM = new_patient_state['cgm_last']

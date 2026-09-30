@@ -1,0 +1,15 @@
+{
+  "algorithm": "CPO",
+  "checkpoint_epoch": 2441,
+  "context_examples": 20,
+  "evaluation_seed": 22,
+  "hyper_check_threshold_mgdl": 170.0,
+  "hypo_check_threshold_mgdl": 80.0,
+  "logit_penalty_magnitude": 10.0,
+  "num_episodes": 1,
+  "patient_name": "adolescent#010",
+  "patient_type": "t1d",
+  "policy_seed": 0,
+  "shield_type": "adolescent#010",
+  "top_k_bolus_levels": 2
+}

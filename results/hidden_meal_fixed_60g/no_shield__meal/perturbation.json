@@ -1,0 +1,14 @@
+{
+  "name": "hidden_meal_m720_g60_eae22ca7",
+  "observation": [],
+  "output_tag": "hidden_meal_m720_g60_eae22ca7",
+  "physiology": {
+    "announced_in_meal_preview": false,
+    "frequency": "once_per_episode",
+    "parameters": {
+      "grams": 60.0,
+      "minute": 720
+    },
+    "type": "hidden_meal"
+  }
+}

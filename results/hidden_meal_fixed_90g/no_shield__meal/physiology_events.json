@@ -1,0 +1,32 @@
+[
+  {
+    "episode": 0,
+    "minute": 720,
+    "grams": 90.0,
+    "ingestion_interval_reached": true
+  },
+  {
+    "episode": 1,
+    "minute": 720,
+    "grams": 90.0,
+    "ingestion_interval_reached": true
+  },
+  {
+    "episode": 2,
+    "minute": 720,
+    "grams": 90.0,
+    "ingestion_interval_reached": true
+  },
+  {
+    "episode": 3,
+    "minute": 720,
+    "grams": 90.0,
+    "ingestion_interval_reached": true
+  },
+  {
+    "episode": 4,
+    "minute": 720,
+    "grams": 90.0,
+    "ingestion_interval_reached": true
+  }
+]

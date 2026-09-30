@@ -1,0 +1,8 @@
+version: 1
+name: hidden_meal
+observation: []
+physiology:
+  type: hidden_meal
+  parameters:
+    minute: 720
+    grams: 60.0
