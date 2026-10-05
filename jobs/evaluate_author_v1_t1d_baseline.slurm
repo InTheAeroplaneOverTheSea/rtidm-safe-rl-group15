@@ -3,7 +3,9 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
+#SBATCH --gpus=1
 #SBATCH --mem=16G
+#SBATCH --partition=gpu_course
 #SBATCH --time=01:00:00
 #SBATCH --array=0-80%12
 #SBATCH --output=slurm-%x-%A_%a.out

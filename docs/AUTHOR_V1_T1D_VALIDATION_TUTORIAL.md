@@ -349,6 +349,12 @@ final line, inspect the last path instead of submitting jobs.
 
 ### 4.3 Submit the no-Shield and predictive-Shield pair
 
+The evaluation job explicitly requests the `gpu_course` partition and one GPU,
+matching the course allocation used by the existing CPO validation jobs. Do
+not let these jobs fall back to the `rome` CPU partition: the `gputue013`
+course account has no compute budget there. The pinned author-v1 evaluator
+still runs in its required CPU mode inside that allocation.
+
 ```bash
 ./scripts/submit_author_v1_baseline_pair.sh "$ALGORITHM"
 ```
@@ -689,6 +695,7 @@ assume that a successful retry repaired the entire matrix.
 | Symptom | Likely cause | What to check |
 |---|---|---|
 | setup reports `Multiple top-level packages discovered` | checkout predates the GlucoAlg setuptools compatibility fix | pull the latest validation branch and resubmit `jobs/setup_surf.slurm`; do not delete the virtual environment |
+| submission says `gputue013` has no compute budget for `rome` | baseline script predates the explicit course partition setting | pull the latest validation branch and confirm `#SBATCH --partition=gpu_course` is present |
 | smoke fails before Python starts | missing archive, patch, checkpoint, or predictor | run the Section 4.2 preflight |
 | predictive fails but no Shield passes | missing predictor/transitions or predictor load error | predictor hashes and 180 transition files |
 | full array never starts | smoke dependency failed | `sacct` for the smoke job and its log |
