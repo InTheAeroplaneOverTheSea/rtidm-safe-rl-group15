@@ -12,6 +12,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 VENV_DIR="${RTIDM_VENV:-$HOME/venvs/rtidm}"
 GLUCOALG_DIR="${PROJECT_DIR}/external/GlucoAlg"
+GLUCOALG_PACKAGING_PATCH="${PROJECT_DIR}/patches/glucoalg_v1_setuptools_discovery.patch"
 
 module purge
 module load 2025
@@ -57,7 +58,31 @@ python -m pip install \
 # The author-v1 evaluation jobs themselves use freshly extracted, commit-pinned
 # source archives via PYTHONPATH.
 python -m pip install -e "${PROJECT_DIR}/external/GlucoSim"
+
+# GlucoAlg commit 50d3134 predates setuptools' strict flat-layout package
+# discovery. Patch only its packaging metadata during installation, then restore
+# the exact pinned checkout so setup remains repeatable and the submodule clean.
+GLUCOALG_PYPROJECT="${GLUCOALG_DIR}/pyproject.toml"
+GLUCOALG_PYPROJECT_BACKUP=""
+restore_glucoalg_pyproject() {
+    if [[ -n "${GLUCOALG_PYPROJECT_BACKUP}" && -f "${GLUCOALG_PYPROJECT_BACKUP}" ]]; then
+        cp "${GLUCOALG_PYPROJECT_BACKUP}" "${GLUCOALG_PYPROJECT}"
+        rm -f "${GLUCOALG_PYPROJECT_BACKUP}"
+        GLUCOALG_PYPROJECT_BACKUP=""
+    fi
+}
+
+if ! grep -q '^\[tool\.setuptools\.packages\.find\]$' "${GLUCOALG_PYPROJECT}"; then
+    test -f "${GLUCOALG_PACKAGING_PATCH}"
+    GLUCOALG_PYPROJECT_BACKUP="$(mktemp)"
+    cp "${GLUCOALG_PYPROJECT}" "${GLUCOALG_PYPROJECT_BACKUP}"
+    trap restore_glucoalg_pyproject EXIT
+    patch --batch --forward -p1 -d "${GLUCOALG_DIR}" < "${GLUCOALG_PACKAGING_PATCH}"
+fi
+
 python -m pip install -e "${GLUCOALG_DIR}"
+restore_glucoalg_pyproject
+trap - EXIT
 
 python - "${GLUCOALG_DIR}/saved_files" <<'PY'
 import sys

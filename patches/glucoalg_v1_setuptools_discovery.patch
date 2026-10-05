@@ -1,0 +1,16 @@
+diff --git a/pyproject.toml b/pyproject.toml
+index 5d2a63d..9a399d7 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -23,3 +23,11 @@ dependencies = [
+   "tqdm",
+   "wandb",
+ ]
++
++[tool.setuptools]
++py-modules = ["run", "eval_run", "dynamics_trainers", "dynamics_utils", "plot_utils"]
++
++[tool.setuptools.packages.find]
++where = ["."]
++include = ["omnisafe*", "FunctionEncoder*", "shield*"]
++exclude = ["tests*"]

@@ -129,7 +129,7 @@ cd "$HOME/projects"
 git clone --recurse-submodules \
   https://github.com/InTheAeroplaneOverTheSea/rtidm-safe-rl-group15.git
 cd rtidm-safe-rl-group15
-git switch Yule-shield-test
+git switch Cathy-t1d-validation-workflow
 git submodule update --init --recursive
 ```
 
@@ -165,12 +165,27 @@ less "slurm-rtidm-setup-${setup_job}.out"
 ```
 
 The setup job creates `$HOME/venvs/rtidm`, installs the dependencies, and
-downloads the transition data. Verify the expected count:
+downloads the transition data. During the editable GlucoAlg install, it
+temporarily applies the setuptools package-discovery compatibility patch and
+then restores the pinned submodule unchanged. Verify the expected count:
 
 ```bash
 test "$(find external/GlucoAlg/saved_files/env_transitions \
   -type f -name '*.npz' | wc -l)" -eq 180
 ```
+
+If an earlier setup attempt failed with `Multiple top-level packages
+discovered in a flat-layout`, do not delete the existing virtual environment
+or edit the GlucoAlg submodule manually. Pull the updated workflow and submit
+the same setup job again:
+
+```bash
+git pull --ff-only
+git submodule update --init --recursive
+sbatch jobs/setup_surf.slurm
+```
+
+The setup is safe to rerun and reuses `$HOME/venvs/rtidm`.
 
 ### 3.3 Fetch the exact author-v1 source archives
 
@@ -673,6 +688,7 @@ assume that a successful retry repaired the entire matrix.
 
 | Symptom | Likely cause | What to check |
 |---|---|---|
+| setup reports `Multiple top-level packages discovered` | checkout predates the GlucoAlg setuptools compatibility fix | pull the latest validation branch and resubmit `jobs/setup_surf.slurm`; do not delete the virtual environment |
 | smoke fails before Python starts | missing archive, patch, checkpoint, or predictor | run the Section 4.2 preflight |
 | predictive fails but no Shield passes | missing predictor/transitions or predictor load error | predictor hashes and 180 transition files |
 | full array never starts | smoke dependency failed | `sacct` for the smoke job and its log |
