@@ -27,9 +27,9 @@ Fill in the agreed team allocation before submitting anything:
 
 | Validator | Assigned algorithms | Expected count |
 |---|---|---:|
-| Person A | `...`, `...`, `...` | 3 |
-| Person B | `...`, `...`, `...` | 3 |
-| Person C | `...`, `...` | 2 |
+| Person A | `CPO`, `CUP`, `FOCOPS` | 3 |
+| Person B | `OnCRPO`, `PCPO`, `PPOLag` | 3 |
+| Person C | `RCPO`, `TRPOLag` | 2 |
 
 One person owns an algorithm end to end. Do not have two people submit the same
 algorithm into the same result directory: the jobs intentionally use stable
