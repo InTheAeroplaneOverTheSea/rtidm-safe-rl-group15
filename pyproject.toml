@@ -1,0 +1,18 @@
+[project]
+name = "2amm20"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "glucosim",
+    "gymnasium[mujoco,other]==1.2.1",
+]
+
+[tool.uv.workspace]
+members = [
+    "GlucoSim",
+]
+
+[tool.uv.sources]
+glucosim = { workspace = true, editable = true }
