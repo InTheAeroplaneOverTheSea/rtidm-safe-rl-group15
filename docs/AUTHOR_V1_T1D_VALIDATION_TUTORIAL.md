@@ -250,8 +250,18 @@ writes the same manifest path.
 ### 3.5 Install and verify the shared BA-NODE predictor
 
 The authors' final predictive-Shield checkpoint is not public. This workflow
-uses the group-trained model. Obtain the two files from the team's shared
-storage and place them at:
+uses the group-trained model committed under
+`checkpoints/ba_node_b5_p24_h24/42/`. Install the two files into the GlucoAlg
+submodule (whose `saved_files/` directory is intentionally ignored by Git):
+
+```bash
+predictor_dir=external/GlucoAlg/saved_files/dynamics_predictor/ba_node_b5_p24_h24/42
+mkdir -p "$predictor_dir"
+cp checkpoints/ba_node_b5_p24_h24/42/config.yaml "$predictor_dir/"
+cp checkpoints/ba_node_b5_p24_h24/42/best_model.pth "$predictor_dir/"
+```
+
+The installed layout must be:
 
 ```text
 external/GlucoAlg/saved_files/dynamics_predictor/ba_node_b5_p24_h24/42/
@@ -747,7 +757,7 @@ Before marking one algorithm complete, confirm every item:
 - [ ] I named the paper revision and table used for comparison.
 - [ ] I reported exact numerical differences without inventing a cause.
 - [ ] I did not describe multi-episode runs as independent seeds `22-31`.
-- [ ] I did not add raw results, checkpoints, archives, or Slurm logs to Git.
+- [ ] I did not add raw results, downloaded policy checkpoints, archives, or Slurm logs to Git.
 
 ## 11. Files that should remain outside Git
 

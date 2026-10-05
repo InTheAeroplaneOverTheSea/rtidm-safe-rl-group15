@@ -1,0 +1,27 @@
+data_type: deterministic
+device: cuda
+input_size:
+- 24
+- 10
+method: least_squares
+model_kwargs:
+  activation: silu
+  d_model: 64
+  encoder_kwargs:
+    history_length: 24
+    num_heads: 4
+    num_layers: 2
+  encoder_type: itransformer
+  ffn_hidden: 128
+  hidden_size: 128
+  n_heads: 4
+  num_layers: 2
+  ode_state_size: 64
+  prediction_length: 24
+model_type: BA_NODE
+n_basis: 5
+optimizer_kwargs:
+  lr: 0.0001
+output_size:
+- 24
+use_residuals_method: false
