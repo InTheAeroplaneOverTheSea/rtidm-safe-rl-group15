@@ -9,21 +9,33 @@ from glucosim import gym_env as gym
 
 @dataclass
 class StressConfig:
-    """
-    Configuration for simulator stress conditions.
-
-    Defaults correspond to the nominal simulator.
-    """
-
-    # Meal timing stress
+    # Meal timing
     meal_shift_minutes: float = 0.0
-
-    # Sensor observation stress
-    # None = use simulator default value
-    cgm_noise_sigma: Optional[float] = None
 
     # Physiological OOD
     kabs_scale: float = 1.0
+
+    # CGM sensor stress
+    cgm_noise_sigma: Optional[float] = None
+    # Standard deviation of zero-mean Gaussian noise added independently
+    # to each CGM observation, in mg/dL.
+
+    cgm_bias_mgdl: Optional[float] = None
+    # Constant additive bias applied to all CGM measurements, in mg/dL.
+    # Simulates persistent sensor calibration error.
+
+    cgm_rw_sigma_bias: Optional[float] = None
+    # Standard deviation of the random-walk increment of CGM sensor bias
+    # at each simulation step. Simulates slowly drifting sensor bias.
+
+    cgm_dropout_prob: Optional[float] = None 
+    # Probability that a CGM measurement is dropped/missing at each step.
+    # Value should typically be between 0 and 1
+    # tips: Its effect may be limited because the simulator smooths/interpolates, so be brave to use a large number
+
+    # Temporally correlated sensor noise
+    cgm_use_ou: Optional[bool] = None # you can ignore this because it changes the some physiological mechanism parameter
+    cgm_ou_sigma: Optional[float] = None # and in next update it will be moved to proper place
 
 
 class GlucoSimInterface:
@@ -134,24 +146,58 @@ class GlucoSimInterface:
     # ==========================================================
 
     def _apply_sensor_stress(
-        self,
-        env,
-        stress: StressConfig,
-    ):
-        if stress.cgm_noise_sigma is None:
-            return
-
+    self,
+    env,
+    stress: StressConfig,
+):
         e = env.unwrapped
 
-        new_noise_config = replace(
-            e.env_params.noise_config,
-            cgm_obs_sigma_mgdl=stress.cgm_noise_sigma,
+        noise = e.env_params.noise_config
+
+        updates = {}
+
+        if stress.cgm_noise_sigma is not None:
+            updates["cgm_obs_sigma_mgdl"] = (
+                stress.cgm_noise_sigma
         )
+
+        if stress.cgm_bias_mgdl is not None:
+            updates["cgm_bias_mgdl"] = (
+                stress.cgm_bias_mgdl
+        )
+
+        if stress.cgm_rw_sigma_bias is not None:
+            updates["cgm_rw_sigma_bias"] = (
+                stress.cgm_rw_sigma_bias
+        )
+
+        if stress.cgm_dropout_prob is not None:
+            updates["cgm_dropout_prob"] = (
+                stress.cgm_dropout_prob
+        )
+
+        if stress.cgm_use_ou is not None:
+            updates["use_ou"] = (
+                stress.cgm_use_ou
+        )
+
+        if stress.cgm_ou_sigma is not None:
+            updates["ou_sigma_dL"] = (
+                stress.cgm_ou_sigma
+        )
+
+        if not updates:
+            return
+
+        new_noise_config = replace(
+            noise,
+            **updates,
+    )
 
         e.env_params = replace(
             e.env_params,
             noise_config=new_noise_config,
-        )
+    )
 
     # ==========================================================
     # Meal timing stress
