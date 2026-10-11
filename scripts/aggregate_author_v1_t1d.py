@@ -48,6 +48,7 @@ EXPECTED_METADATA = {
     "glucosim_commit": "6522d49ee1e6c1fd34f287519a5d41df735bbd38",
     "evaluation_seed": "22",
     "checkpoint_epoch": "2441",
+    "checkpoint_revision_policy": "author-v1-january-2026",
 }
 
 
@@ -221,6 +222,9 @@ def main() -> int:
                         "v1_use_meal_hyper_check": "false",
                         "v1_hyper_check_threshold_mgdl": "250",
                         "logit_penalty": penalty_tag,
+                        "transition_dataset_revision": (
+                            "b9e59ff5f14fb36aacd69f9d57febf26e88de21d"
+                        ),
                     }
                 for key, value in expected.items():
                     if metadata.get(key) != value:

@@ -27,6 +27,9 @@ fi
 
 source "${VENV_DIR}/bin/activate"
 
+test -n "${TMPDIR:-}"
+test -d "${TMPDIR}"
+
 python - <<'PY'
 import sys
 
@@ -84,17 +87,9 @@ python -m pip install -e "${GLUCOALG_DIR}"
 restore_glucoalg_pyproject
 trap - EXIT
 
-python - "${GLUCOALG_DIR}/saved_files" <<'PY'
-import sys
-from huggingface_hub import snapshot_download
-
-snapshot_download(
-    repo_id="safe-diabetes-benchmark/transition_datasets",
-    repo_type="dataset",
-    local_dir=sys.argv[1],
-    allow_patterns=["env_transitions/**"],
-)
-PY
+python -u "${PROJECT_DIR}/scripts/download_author_v1_transitions.py" \
+    --glucoalg-dir "${GLUCOALG_DIR}" \
+    --download-dir "${TMPDIR}/author-v1-transitions-hf"
 
 NPZ_COUNT="$(find "${GLUCOALG_DIR}/saved_files/env_transitions" -type f -name '*.npz' | wc -l | tr -d ' ')"
 if [[ "${NPZ_COUNT}" != "180" ]]; then

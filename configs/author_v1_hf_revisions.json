@@ -1,0 +1,39 @@
+{
+  "checkpoint_epoch": 2441,
+  "policy_repositories": {
+    "safe-diabetes-benchmark/safe-diabetes-t1d-adolescent-cpo": "993c43697d18333247e5d1fbe39ba37b989393ee",
+    "safe-diabetes-benchmark/safe-diabetes-t1d-adolescent-cup": "9ea7b8427b59ebf40d2facc99f983853d200139c",
+    "safe-diabetes-benchmark/safe-diabetes-t1d-adolescent-focops": "67b1269443ac3223cc7382b573d0d6eebfe846ed",
+    "safe-diabetes-benchmark/safe-diabetes-t1d-adolescent-oncrpo": "92d20b8b40fa78136285613405fc6a3858af890c",
+    "safe-diabetes-benchmark/safe-diabetes-t1d-adolescent-pcpo": "625b11d5ac9af26b3abd258c61f2a56a32da62d0",
+    "safe-diabetes-benchmark/safe-diabetes-t1d-adolescent-ppolag": "91de1ae5b10652c9fe3cf1adb23e02fbc3042485",
+    "safe-diabetes-benchmark/safe-diabetes-t1d-adolescent-rcpo": "283f846cfabcd72c0ac08c320b0faa650e573d0f",
+    "safe-diabetes-benchmark/safe-diabetes-t1d-adolescent-trpolag": "eceb9e6e36ba61a5d5eb1e5b0ab1ed4f488f6dd6",
+    "safe-diabetes-benchmark/safe-diabetes-t1d-adult-cpo": "f99845f59782616d8803b640b44953825e18e149",
+    "safe-diabetes-benchmark/safe-diabetes-t1d-adult-cup": "40bbfab12fe94cd2a5be9e38599b4db1820906f8",
+    "safe-diabetes-benchmark/safe-diabetes-t1d-adult-focops": "c5da7ad62152fe5c4c1e6a8a0d39058c053c2e31",
+    "safe-diabetes-benchmark/safe-diabetes-t1d-adult-oncrpo": "a1712827ecd9b42eb3d6d87a415f8dd3569e4f89",
+    "safe-diabetes-benchmark/safe-diabetes-t1d-adult-pcpo": "e9359cd37e65a8a67db708e0118228cd3d882154",
+    "safe-diabetes-benchmark/safe-diabetes-t1d-adult-ppolag": "bef13eb5ba8ac8001cc0abf1bc8524b84afd486e",
+    "safe-diabetes-benchmark/safe-diabetes-t1d-adult-rcpo": "7ac6b19668f133a7efcd47168677bf8468d6bd2c",
+    "safe-diabetes-benchmark/safe-diabetes-t1d-adult-trpolag": "0aa4e0bf513b48eefcc0145a4e61805406cb047a",
+    "safe-diabetes-benchmark/safe-diabetes-t1d-child-cpo": "679f97d831282c6f2daabd68cc6a5d0bb1591a66",
+    "safe-diabetes-benchmark/safe-diabetes-t1d-child-cup": "1e7750f8ecb691dcbcc7eb1465d97a80105ae47d",
+    "safe-diabetes-benchmark/safe-diabetes-t1d-child-focops": "345decc8e59bc4d30478bb471d9353c9db25595f",
+    "safe-diabetes-benchmark/safe-diabetes-t1d-child-oncrpo": "5ec210006a91d191089128c5e9aa5e80ae70748c",
+    "safe-diabetes-benchmark/safe-diabetes-t1d-child-pcpo": "f79f93cf4378479286b89d14cc69d59ecd2b8070",
+    "safe-diabetes-benchmark/safe-diabetes-t1d-child-ppolag": "1868659f3bdac2665deb390e9ed51427066b1a6a",
+    "safe-diabetes-benchmark/safe-diabetes-t1d-child-rcpo": "8102f73d0cf77dbcbd2e96291d16bc08c8509cf3",
+    "safe-diabetes-benchmark/safe-diabetes-t1d-child-trpolag": "b48c810e5c46e7b63837fddd1d9b8834e702bfd2"
+  },
+  "provenance": {
+    "paper_revision": "arXiv v1",
+    "policy_snapshot_date": "2026-01-31",
+    "purpose": "Reproduce the checkpoints and transition data published with the January author-v1 code and paper."
+  },
+  "transition_dataset": {
+    "expected_npz_files": 180,
+    "repo_id": "safe-diabetes-benchmark/transition_datasets",
+    "revision": "b9e59ff5f14fb36aacd69f9d57febf26e88de21d"
+  }
+}

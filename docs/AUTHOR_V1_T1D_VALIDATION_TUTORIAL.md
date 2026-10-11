@@ -1,6 +1,6 @@
 # Author-v1 T1D validation tutorial
 
-Last updated: 2026-09-30
+Last updated: 2026-10-11
 
 This is a practical tutorial for the three teammates who will validate the
 eight T1D Safe-RL algorithms in a `3 + 3 + 2` split. It is not a project
@@ -8,9 +8,16 @@ handoff or a summary of one person's work. Each validator should be able to
 start with their assigned algorithm names, follow the same procedure, and
 produce comparable evidence.
 
-The workflow uses Snellius, Slurm, the public policy checkpoints, the January
-author-v1 code stack, and the group's trained BA-NODE predictor. It validates
-both the unshielded policy and the predictive-Shield condition.
+The workflow uses Snellius, Slurm, the January public policy checkpoints, the
+January author-v1 code stack, and the group's trained BA-NODE predictor. It
+validates both the unshielded policy and the predictive-Shield condition.
+
+On 2026-10-08 the authors replaced the files at the default Hugging Face
+revisions for all 24 T1D policy repositories and the transition dataset. Those
+new assets belong to the rerun code stack and are not compatible inputs for
+this author-v1 reproduction. This workflow therefore never downloads from
+Hugging Face `main`: the exact January revisions are recorded in
+`configs/author_v1_hf_revisions.json` and checked again before every evaluation.
 
 ## 1. What each person is validating
 
@@ -165,11 +172,17 @@ less "slurm-rtidm-setup-${setup_job}.out"
 ```
 
 The setup job creates `$HOME/venvs/rtidm`, installs the dependencies, and
-downloads the transition data. During the editable GlucoAlg install, it
-temporarily applies the setuptools package-discovery compatibility patch and
-then restores the pinned submodule unchanged. Verify the expected count:
+downloads transition revision
+`b9e59ff5f14fb36aacd69f9d57febf26e88de21d`, published with author v1. During
+the editable GlucoAlg install, it temporarily applies the setuptools
+package-discovery compatibility patch and then restores the pinned submodule
+unchanged. Verify both the revision, all file hashes, and the expected count:
 
 ```bash
+source "${RTIDM_VENV:-$HOME/venvs/rtidm}/bin/activate"
+python scripts/download_author_v1_transitions.py \
+  --glucoalg-dir external/GlucoAlg \
+  --verify-only
 test "$(find external/GlucoAlg/saved_files/env_transitions \
   -type f -name '*.npz' | wc -l)" -eq 180
 ```
@@ -185,7 +198,9 @@ git submodule update --init --recursive
 sbatch jobs/setup_surf.slurm
 ```
 
-The setup is safe to rerun and reuses `$HOME/venvs/rtidm`.
+The setup is safe to rerun and reuses `$HOME/venvs/rtidm`. If setup was run
+before this pinning fix, rerun it even if 180 transition files already exist;
+the count alone cannot distinguish the January dataset from the replacement.
 
 ### 3.3 Fetch the exact author-v1 source archives
 
@@ -218,7 +233,17 @@ GlucoAlg  50d3134fd6f0e01019295be0d6b99f110f794753
 GlucoSim  6522d49ee1e6c1fd34f287519a5d41df735bbd38
 ```
 
+The fetch job and every evaluation job now enforce these archive hashes; a
+file with the expected name but different source contents is rejected before
+the evaluator starts.
+
 ### 3.4 Download all eight algorithms' public checkpoints
+
+The download script uses the 24 immutable January revisions in
+`configs/author_v1_hf_revisions.json`. It does not resolve the current Hub
+revision. If checkpoints were downloaded before this pinning fix, rerun this
+job: an existing `epoch-2441.pt` filename does not prove that the file belongs
+to author v1.
 
 In a shared checkout, run this once for all eight algorithms so that the
 manifest is complete and concurrent downloads cannot race:
@@ -250,6 +275,19 @@ Checkpoint revisions and installed hashes are recorded in:
 
 ```text
 author_v1_all_baselines_evaluation/t1d_checkpoint_manifest.json
+```
+
+The evaluation job refuses to start if that manifest names a non-January
+revision or if an installed config/checkpoint hash differs. You can run the
+same preflight explicitly for one assigned algorithm:
+
+```bash
+source "${RTIDM_VENV:-$HOME/venvs/rtidm}/bin/activate"
+python scripts/download_t1d_baseline_checkpoints.py \
+  --glucoalg-dir external/GlucoAlg \
+  --manifest author_v1_all_baselines_evaluation/t1d_checkpoint_manifest.json \
+  --algorithms CUP \
+  --verify-only
 ```
 
 If validators use separate checkouts, a person may download only their own
@@ -340,6 +378,16 @@ test -f external/GlucoAlg/saved_files/dynamics_predictor/ba_node_b5_p24_h24/42/c
 test -f external/GlucoAlg/saved_files/dynamics_predictor/ba_node_b5_p24_h24/42/best_model.pth
 test "$(find external/GlucoAlg/saved_files/env_transitions \
   -type f -name '*.npz' | wc -l)" -eq 180
+
+source "${RTIDM_VENV:-$HOME/venvs/rtidm}/bin/activate"
+python scripts/download_t1d_baseline_checkpoints.py \
+  --glucoalg-dir external/GlucoAlg \
+  --manifest author_v1_all_baselines_evaluation/t1d_checkpoint_manifest.json \
+  --algorithms "$ALGORITHM" \
+  --verify-only
+python scripts/download_author_v1_transitions.py \
+  --glucoalg-dir external/GlucoAlg \
+  --verify-only
 
 echo "$ALGORITHM preflight passed"
 ```
@@ -694,6 +742,7 @@ assume that a successful retry repaired the entire matrix.
 
 | Symptom | Likely cause | What to check |
 |---|---|---|
+| checkpoint download or smoke reports a non-author-v1 revision/hash | checkpoints were downloaded from Hugging Face `main` after the 2026-10-08 replacement | pull this branch, rerun Sections 3.2 and 3.4, and do not bypass `--verify-only` |
 | setup reports `Multiple top-level packages discovered` | checkout predates the GlucoAlg setuptools compatibility fix | pull the latest validation branch and resubmit `jobs/setup_surf.slurm`; do not delete the virtual environment |
 | submission says `gputue013` has no compute budget for `rome` | baseline script predates the explicit course partition setting | pull the latest validation branch and confirm `#SBATCH --partition=gpu_course` is present |
 | smoke fails before Python starts | missing archive, patch, checkpoint, or predictor | run the Section 4.2 preflight |
@@ -768,6 +817,8 @@ Before marking one algorithm complete, confirm every item:
 - [ ] I used the exact repository algorithm name.
 - [ ] I did not run compute work on the login node.
 - [ ] All nine cohort/seed checkpoint pairs exist at epoch `2441`.
+- [ ] Checkpoint verification reports the January author-v1 revisions and matching hashes.
+- [ ] Transition verification reports revision `b9e59ff5...` and 180 matching files.
 - [ ] The author-v1 archive hashes match Section 3.3.
 - [ ] The group predictor hashes match Section 3.5.
 - [ ] Both smoke tests completed with exit code `0:0`.

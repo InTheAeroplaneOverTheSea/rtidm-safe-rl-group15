@@ -21,8 +21,11 @@ PROJECT_DIR="${SLURM_SUBMIT_DIR:-$PWD}"
 VENV_DIR="${RTIDM_VENV:-$HOME/venvs/rtidm}"
 GLUCOALG_ARCHIVE="${PROJECT_DIR}/author_v1_GlucoAlg_50d3134.tar.gz"
 GLUCOSIM_ARCHIVE="${PROJECT_DIR}/author_v1_GlucoSim_6522d49.tar.gz"
+GLUCOALG_ARCHIVE_SHA256="e2f775bd0a75fbbb657628708e98efe6d684dd5109edf7268c6e396cb5aa253f"
+GLUCOSIM_ARCHIVE_SHA256="3e8f7e48e8606f7136bd372898fd855d84fc959a70736cdf4b8db34c88063ba0"
 GLUCOSIM_COMPAT_PATCH="${PROJECT_DIR}/patches/glucosim_v1_python313.patch"
 POLICY_BASE="${PROJECT_DIR}/external/GlucoAlg/saved_models/t1d"
+POLICY_MANIFEST="${PROJECT_DIR}/author_v1_all_baselines_evaluation/t1d_checkpoint_manifest.json"
 TRANSITIONS_SOURCE="${PROJECT_DIR}/external/GlucoAlg/saved_files/env_transitions"
 PREDICTOR_SOURCE="${PROJECT_DIR}/external/GlucoAlg/saved_files/dynamics_predictor/ba_node_b5_p24_h24/42"
 TASK_INDEX="${SLURM_ARRAY_TASK_ID:?This job must be submitted as a Slurm array.}"
@@ -61,8 +64,13 @@ test -f "${VENV_DIR}/bin/activate"
 test -f "${GLUCOALG_ARCHIVE}"
 test -f "${GLUCOSIM_ARCHIVE}"
 test -f "${GLUCOSIM_COMPAT_PATCH}"
+test -f "${POLICY_MANIFEST}"
 test -n "${TMPDIR:-}"
 test -d "${TMPDIR}"
+printf '%s  %s\n%s  %s\n' \
+    "${GLUCOALG_ARCHIVE_SHA256}" "${GLUCOALG_ARCHIVE}" \
+    "${GLUCOSIM_ARCHIVE_SHA256}" "${GLUCOSIM_ARCHIVE}" \
+    | sha256sum --check --strict
 
 POLICY_SOURCE="${POLICY_BASE}/${COHORT}/${ALGORITHM}/seed${POLICY_SEED}"
 test -f "${POLICY_SOURCE}/config.json"
@@ -73,6 +81,17 @@ if [[ "${CONDITION}" == "predictive" ]]; then
     test -d "${TRANSITIONS_SOURCE}"
 fi
 source "${VENV_DIR}/bin/activate"
+
+python -u "${PROJECT_DIR}/scripts/download_t1d_baseline_checkpoints.py" \
+    --glucoalg-dir "${PROJECT_DIR}/external/GlucoAlg" \
+    --manifest "${POLICY_MANIFEST}" \
+    --algorithms "${ALGORITHM}" \
+    --verify-only
+if [[ "${CONDITION}" == "predictive" ]]; then
+    python -u "${PROJECT_DIR}/scripts/download_author_v1_transitions.py" \
+        --glucoalg-dir "${PROJECT_DIR}/external/GlucoAlg" \
+        --verify-only
+fi
 
 WORK_ROOT="${TMPDIR}/author-v1-${ALGORITHM}-${SLURM_ARRAY_JOB_ID}-${TASK_INDEX}-${CONDITION}"
 WORK_GLUCOALG="${WORK_ROOT}/GlucoAlg"
@@ -128,8 +147,10 @@ sync_results() {
             echo "evaluation_seed=22"
             echo "episodes=${EPISODES}"
             echo "checkpoint_epoch=2441"
+            echo "checkpoint_revision_policy=author-v1-january-2026"
             if [[ "${CONDITION}" == "predictive" ]]; then
                 echo "predictor_provenance=group_trained_ba_node_b5_p24_h24_seed42"
+                echo "transition_dataset_revision=b9e59ff5f14fb36aacd69f9d57febf26e88de21d"
                 echo "v1_use_meal_hyper_check=false"
                 echo "v1_hyper_check_threshold_mgdl=250"
                 echo "logit_penalty=${LOGIT_PENALTY}"
