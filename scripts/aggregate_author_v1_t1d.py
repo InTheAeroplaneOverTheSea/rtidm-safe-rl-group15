@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import statistics
 import sys
 from collections import defaultdict
@@ -100,6 +101,20 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--stress-scenario",
+        choices=("nominal", "sensor_sigma15", "unannounced_meal_60g"),
+        help=(
+            "Validate a stress-harness result instead of the original "
+            "author-v1 evaluator output."
+        ),
+    )
+    parser.add_argument(
+        "--replicate-id",
+        type=int,
+        default=0,
+        help="Expected stress replicate id (default: 0).",
+    )
+    parser.add_argument(
         "--paper-tir-mean",
         type=float,
         help="Optional paper TIR mean to print a numerical comparison.",
@@ -144,6 +159,8 @@ def main() -> int:
     args = parse_args()
     if args.expected_episodes < 1:
         raise SystemExit("--expected-episodes must be at least 1")
+    if args.replicate_id < 0:
+        raise SystemExit("--replicate-id must be nonnegative")
     if (args.paper_tir_mean is None) != (args.paper_tir_std is None):
         raise SystemExit(
             "--paper-tir-mean and --paper-tir-std must be provided together"
@@ -161,6 +178,8 @@ def main() -> int:
     cells: dict[tuple[str, int, int], list[dict[str, float]]] = {}
     checkpoint_hashes: dict[tuple[str, int], set[str]] = defaultdict(set)
     predictor_hashes: set[str] = set()
+    episode_seed_sequences: set[tuple[int, ...]] = set()
+    stress_code_hashes: dict[str, set[str]] = defaultdict(set)
 
     for cohort in COHORTS:
         for patient_number in PATIENT_NUMBERS:
@@ -170,6 +189,7 @@ def main() -> int:
                 summary_path = result_dir / "summary_results.csv"
                 detail_path = result_dir / "detailed_results.csv"
                 metadata_path = result_dir / "run_metadata.txt"
+                stress_metadata_path = result_dir / "stress_episode_metadata.json"
                 cell = (cohort, patient_number, policy_seed)
 
                 if not summary_path.is_file():
@@ -206,10 +226,22 @@ def main() -> int:
                 cells[cell] = numeric_rows
 
                 metadata, hash_records = read_metadata(metadata_path)
-                expected = EXPECTED_METADATA | {
+                expected_metadata = dict(EXPECTED_METADATA)
+                if args.stress_scenario is not None:
+                    expected_metadata["code_stack"] = "author_v1_stress"
+                expected = expected_metadata | {
                     "condition": args.condition,
                     "episodes": str(args.expected_episodes),
                 }
+                if args.stress_scenario is not None:
+                    expected |= {
+                        "stress_scenario": args.stress_scenario,
+                        "stress_semantics": "post_action_pre_step",
+                        "evaluation_seed_mode": (
+                            "explicit_key_before_every_episode"
+                        ),
+                        "replicate_id": str(args.replicate_id),
+                    }
                 if args.algorithm is not None:
                     expected["algorithm"] = args.algorithm
                 if args.expected_result_collection is not None:
@@ -236,6 +268,87 @@ def main() -> int:
                     fail(errors, f"{metadata_path}: patient_name mismatch")
                 if metadata.get("policy_seed") != str(policy_seed):
                     fail(errors, f"{metadata_path}: policy_seed mismatch")
+
+                if args.stress_scenario is not None:
+                    for key in (
+                        "stress_interface_sha256",
+                        "stress_hook_sha256",
+                        "stress_eval_patch_sha256",
+                    ):
+                        value = metadata.get(key)
+                        if value is None or len(value) != 64:
+                            fail(errors, f"{metadata_path}: invalid {key}")
+                        else:
+                            stress_code_hashes[key].add(value)
+
+                    if not stress_metadata_path.is_file():
+                        fail(errors, f"missing {stress_metadata_path}")
+                    else:
+                        try:
+                            stress_payload = json.loads(
+                                stress_metadata_path.read_text()
+                            )
+                            if (
+                                stress_payload.get("stress_scenario")
+                                != args.stress_scenario
+                            ):
+                                fail(
+                                    errors,
+                                    f"{stress_metadata_path}: stress scenario mismatch",
+                                )
+                            if stress_payload.get("replicate_id") != args.replicate_id:
+                                fail(
+                                    errors,
+                                    f"{stress_metadata_path}: replicate id mismatch",
+                                )
+                            stress_episodes = stress_payload.get("episodes", [])
+                            if len(stress_episodes) != args.expected_episodes:
+                                fail(
+                                    errors,
+                                    f"{stress_metadata_path}: expected "
+                                    f"{args.expected_episodes} episode records, "
+                                    f"found {len(stress_episodes)}",
+                                )
+                            episode_seed_sequences.add(
+                                tuple(
+                                    int(record["episode_seed"])
+                                    for record in stress_episodes
+                                )
+                            )
+                            for record in stress_episodes:
+                                if args.stress_scenario == "sensor_sigma15":
+                                    if record.get("cgm_obs_sigma_mgdl") != 15.0:
+                                        fail(
+                                            errors,
+                                            f"{stress_metadata_path}: sensor sigma "
+                                            "is not 15.0",
+                                        )
+                                if args.stress_scenario == "unannounced_meal_60g":
+                                    planned = record.get(
+                                        "planned_unannounced_meals", []
+                                    )
+                                    expected_hidden = [
+                                        {
+                                            "day": day,
+                                            "time_minutes": 900,
+                                            "absolute_time_minutes": (
+                                                (day - 1) * 1440 + 900
+                                            ),
+                                            "carbs_g": 60.0,
+                                        }
+                                        for day in range(1, 8)
+                                    ]
+                                    if planned != expected_hidden:
+                                        fail(
+                                            errors,
+                                            f"{stress_metadata_path}: unexpected "
+                                            "hidden-meal plan",
+                                        )
+                        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+                            fail(
+                                errors,
+                                f"{stress_metadata_path}: invalid stress metadata ({exc})",
+                            )
 
                 policy_hashes = [
                     digest
@@ -276,6 +389,19 @@ def main() -> int:
                 f"expected one predictor identity, found {sorted(predictor_hashes)}",
             )
         print(f"Predictor identities: {len(predictor_hashes)}/1")
+    if args.stress_scenario is not None:
+        if len(episode_seed_sequences) != 1:
+            fail(
+                errors,
+                "stress cells do not share one condition-independent episode seed sequence",
+            )
+        for key, values in stress_code_hashes.items():
+            if len(values) != 1:
+                fail(errors, f"inconsistent {key}: {sorted(values)}")
+        print(
+            "Stress episode seed sequences: "
+            f"{len(episode_seed_sequences)}/1"
+        )
 
     if errors:
         print("\nValidation failed:", file=sys.stderr)

@@ -38,3 +38,6 @@ git clone --recurse-submodules https://github.com/InTheAeroplaneOverTheSea/rtidm
 
 Team members validating the eight author-v1 T1D baselines should follow the
 step-by-step [`3 + 3 + 2` validation tutorial](docs/AUTHOR_V1_T1D_VALIDATION_TUTORIAL.md).
+
+The paired sensor-noise and paper-aligned unannounced-meal experiments are
+documented in the [author-v1 stress-test tutorial](docs/AUTHOR_V1_STRESS_TEST_TUTORIAL.md).

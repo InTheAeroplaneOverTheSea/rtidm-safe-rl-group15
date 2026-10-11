@@ -1,14 +1,17 @@
-"""GlucoSim evaluation interface with reproducible meal stress scenarios.
+"""GlucoSim evaluation interface with reproducible stress scenarios.
 
-Targeted at the GlucoSim revision ddd674e35a32a3a6406a0c2d5e7bf3c72f56dfec.
+Tested against GlucoSim revisions 6522d49ee1e6c1fd34f287519a5d41df735bbd38
+and ddd674e35a32a3a6406a0c2d5e7bf3c72f56dfec.
 
 The public ``create(stress, seed) -> (env, obs, info)`` API is preserved.
 For an existing environment, use ``interface.reset(env, stress, seed)`` instead
 of calling ``env.reset()`` directly: a direct reset replaces scenario_meals.
 
-Meal interventions are **announced**: the changed schedule is available to the
-agent through GlucoSim's next-meal observation fields. An unannounced-meal
-experiment requires a separate observation/announcement mechanism.
+Scheduled-meal transformations are **announced** through GlucoSim's next-meal
+observation fields. ``unannounced_daily_meals`` are different: call
+``inject_unannounced_meals`` after the policy/Shield chooses its action but
+before ``env.step``. The carbohydrates are then added to the real patient state
+without ever appearing in the pre-event meal-look-ahead observation.
 """
 
 from dataclasses import dataclass, replace
@@ -50,6 +53,12 @@ class StressConfig:
     max_meals_per_day: int = 10  # fixed JAX padded shape after reset
     # What to do with shifted meals before 0 or after evaluation horizon.
     meal_out_of_horizon: Literal["error", "drop"] = "error"
+
+    # Surprise meals repeated on every evaluation day. These are deliberately
+    # absent from scenario_meals and therefore from the pre-event look-ahead
+    # observation. The evaluator must inject them immediately before env.step.
+    # Example: [Meal("15:00", 60)] adds one hidden 60 g meal per day.
+    unannounced_daily_meals: Optional[Sequence[MealInput]] = None
 
     # Physiological OOD
     kabs_scale: float = 1.0
@@ -135,6 +144,7 @@ class GlucoSimInterface:
         self.patient_name = patient_name
         self.simulation_minutes = int(simulation_minutes)
         self.sample_time = int(sample_time)
+        self._delivered_unannounced: dict[int, list[dict]] = {}
 
     @property
     def horizon_days(self) -> int:
@@ -150,7 +160,7 @@ class GlucoSimInterface:
         stress = stress if stress is not None else StressConfig()
         self._validate_meal_stress(stress)
         env = self._create_env(stress)
-        self._apply_sensor_stress(env, stress)
+        self.configure_existing_env(env, stress)
         try:
             obs, info = self.reset(env, stress, seed)
         except Exception:
@@ -163,10 +173,111 @@ class GlucoSimInterface:
         stress = stress if stress is not None else StressConfig()
         self._validate_meal_stress(stress)
         obs, info = env.reset(seed=seed)
-        corrected = self._apply_meal_stress(env, stress, seed)
+        corrected = self.after_reset(env, stress, seed)
         if corrected is not None:
             obs = corrected
         return obs, info
+
+    def configure_existing_env(self, env, stress: Optional[StressConfig] = None):
+        """Apply pre-reset stress to an already constructed Gym environment.
+
+        This is the entry point used by the author-v1 evaluator, which owns the
+        ``DiabetesEnvs`` wrapper and therefore cannot use :meth:`create`.
+        ``kabs_scale`` must still be supplied at construction time.
+        """
+        stress = stress if stress is not None else StressConfig()
+        self._validate_meal_stress(stress)
+        if stress.kabs_scale != 1.0:
+            raise ValueError(
+                "kabs_scale cannot be applied to an existing environment; "
+                "construct the environment through GlucoSimInterface.create"
+            )
+        self._apply_sensor_stress(env, stress)
+
+    def after_reset(self, env, stress: Optional[StressConfig] = None, seed: int = 0):
+        """Apply post-reset schedule changes and start a new hidden-meal log.
+
+        Returns a corrected initial observation for announced schedule changes,
+        or ``None`` when the reset observation is already correct.
+        """
+        stress = stress if stress is not None else StressConfig()
+        self._validate_meal_stress(stress)
+        self._delivered_unannounced[id(env.unwrapped)] = []
+        return self._apply_meal_stress(env, stress, seed)
+
+    def planned_unannounced_meal_events(
+        self, stress: Optional[StressConfig] = None
+    ) -> list[dict]:
+        """Return the hidden event plan without exposing it to the environment."""
+        stress = stress if stress is not None else StressConfig()
+        self._validate_meal_stress(stress)
+        daily = stress.unannounced_daily_meals
+        if daily is None:
+            return []
+        parsed = [_parse_meal(meal) for meal in daily]
+        return [
+            {
+                "day": day + 1,
+                "time_minutes": int(time),
+                "absolute_time_minutes": day * 1440 + int(time),
+                "carbs_g": float(carbs),
+            }
+            for day in range(self.horizon_days)
+            for time, carbs in parsed
+            if carbs > 0
+        ]
+
+    def inject_unannounced_meals(
+        self, env, stress: Optional[StressConfig] = None
+    ) -> list[dict]:
+        """Inject due surprise meals after action selection and before ``step``.
+
+        The meal is added directly to the patient's pending carbohydrate buffer,
+        not to ``scenario_meals``. Consequently the current observation and all
+        earlier meal-look-ahead observations cannot reveal it. Calling this
+        method twice at the same simulator minute is idempotent.
+        """
+        stress = stress if stress is not None else StressConfig()
+        self._validate_meal_stress(stress)
+        if stress.unannounced_daily_meals is None:
+            return []
+
+        e = env.unwrapped
+        if e._jax_state is None:
+            raise RuntimeError("Unannounced meals can only be injected after reset")
+        current_time = int(np.asarray(e._jax_state["t"]))
+        env_key = id(e)
+        delivered = self._delivered_unannounced.setdefault(env_key, [])
+        delivered_times = {
+            int(event["absolute_time_minutes"]) for event in delivered
+        }
+        if current_time in delivered_times:
+            return []
+
+        due = [
+            event
+            for event in self.planned_unannounced_meal_events(stress)
+            if event["absolute_time_minutes"] == current_time
+        ]
+        if not due:
+            return []
+
+        total_carbs = sum(float(event["carbs_g"]) for event in due)
+        new_state = dict(e._jax_state)
+        pending = jnp.asarray(new_state["planned_meal"], dtype=jnp.float32)
+        new_state["planned_meal"] = pending + jnp.asarray(
+            total_carbs, dtype=jnp.float32
+        )
+        e._jax_state = new_state
+        delivered.extend(dict(event) for event in due)
+        return [dict(event) for event in due]
+
+    def delivered_unannounced_meal_events(self, env) -> list[dict]:
+        """Return a copy of the surprise meals actually injected this episode."""
+        return [
+            dict(event)
+            for event in self._delivered_unannounced.get(id(env.unwrapped), [])
+        ]
 
     def _create_env(self, stress: StressConfig):
         patient_overrides = {}
@@ -237,6 +348,14 @@ class GlucoSimInterface:
             raise ValueError("max_meals_per_day must be a positive integer")
         if stress.meal_out_of_horizon not in ("error", "drop"):
             raise ValueError("meal_out_of_horizon must be 'error' or 'drop'")
+        if stress.unannounced_daily_meals is not None:
+            for meal in stress.unannounced_daily_meals:
+                time, _ = _parse_meal(meal)
+                if not float(time).is_integer() or int(time) % self.sample_time:
+                    raise ValueError(
+                        "Unannounced meal times must be integer multiples of "
+                        f"sample_time={self.sample_time}, got {time}"
+                    )
 
     def _original_or_custom_meals(self, original: np.ndarray, stress: StressConfig):
         """Return a list of (day, minutes_after_midnight, carbohydrate_g)."""

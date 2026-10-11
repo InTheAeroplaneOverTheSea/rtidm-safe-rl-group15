@@ -1,3 +1,9 @@
+> Note: the original meal-shift examples below are *announced* through the
+> next-meal observation. They remain useful simulator sanity checks, but they
+> are not the paper-aligned Shield stress test. The SURF workflow now injects
+> post-action unannounced meals as documented in
+> `docs/AUTHOR_V1_STRESS_TEST_TUTORIAL.md`.
+
 interface.py is where we can modify the simulator. There're three factors: noise, meals, ood.
 
 ```markdown

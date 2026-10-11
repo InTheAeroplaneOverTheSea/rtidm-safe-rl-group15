@@ -1,0 +1,51 @@
+--- a/eval_run.py
++++ b/eval_run.py
+@@ -24,0 +25 @@
++from author_v1_stress_hook import AuthorV1StressController, STRESS_SCENARIOS
+@@ -310 +311,2 @@
+-                  shield_type: str = 'child', save_plots: bool = False, logit_penalty: float = 10.0) -> Dict:
++                  shield_type: str = 'child', save_plots: bool = False, logit_penalty: float = 10.0,
++                  stress_controller: AuthorV1StressController | None = None) -> Dict:
+@@ -376 +378,4 @@
+-        obs, info = env.reset(seed=seed + episode)
++        if stress_controller is None:
++            obs, info = env.reset(seed=seed + episode)
++        else:
++            obs, info = stress_controller.reset_episode(env, episode)
+@@ -458,0 +464,6 @@
++            # Surprise meals must be injected only after both the policy and
++            # Shield have selected this step's action.  They never appear in
++            # the scheduled-meal look-ahead observation.
++            if stress_controller is not None:
++                stress_controller.before_step()
++
+@@ -672 +683,3 @@
+-         save_plots: bool = False, logit_penalty: float | None = None):
++         save_plots: bool = False, logit_penalty: float | None = None,
++         stress_scenario: str = 'nominal', evaluation_seed: int = 22,
++         replicate_id: int = 0):
+@@ -696,2 +709 @@
+-    # Set evaluation seed
+-    eval_seed = 22
++    eval_seed = evaluation_seed
+@@ -705,0 +718,6 @@
++    stress_controller = AuthorV1StressController(
++        env,
++        scenario=stress_scenario,
++        base_seed=eval_seed,
++        replicate_id=replicate_id,
++    )
+@@ -720 +738,2 @@
+-                           shield_type=shield_type, save_plots=save_plots, logit_penalty=penalty_value)
++                           shield_type=shield_type, save_plots=save_plots, logit_penalty=penalty_value,
++                           stress_controller=stress_controller)
+@@ -725,0 +745 @@
++    stress_controller.write_metadata(output_dir)
+@@ -812,0 +833,3 @@
++    parser.add_argument("--stress-scenario", choices=sorted(STRESS_SCENARIOS), default="nominal")
++    parser.add_argument("--evaluation-seed", type=int, default=22)
++    parser.add_argument("--replicate-id", type=int, default=0)
+@@ -843,0 +867,3 @@
++        args.stress_scenario,
++        args.evaluation_seed,
++        args.replicate_id,
