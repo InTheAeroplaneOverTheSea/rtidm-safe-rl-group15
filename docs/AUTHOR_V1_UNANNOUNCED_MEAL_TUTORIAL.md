@@ -2,12 +2,22 @@
 
 Last updated: 2026-10-11
 
-The submitted CPO run and its one-time initial Slurm snapshot are recorded in
+The initial hidden-meal-only gate and the formal validation-bridge submissions
+are documented in
 [`AUTHOR_V1_UNANNOUNCED_MEAL_RUN_STATUS.md`](AUTHOR_V1_UNANNOUNCED_MEAL_RUN_STATUS.md).
 
 This tutorial is only for the paper-aligned unexpected-meal experiment. Sensor
 noise, bias, drift, and dropout are documented separately in
 [`AUTHOR_V1_STRESS_TEST_TUTORIAL.md`](AUTHOR_V1_STRESS_TEST_TUTORIAL.md).
+
+> **Comparison boundary:** the formal comparison uses ten independent
+> evaluation seeds (`22..31`) per patient/checkpoint cell. Do not subtract an
+> unexpected-meal result directly from the older validation result: the stress
+> harness corrects episode-key reset semantics. The formal bridge therefore
+> reruns both `nominal` and `unannounced_meal_60g` with those same ten literal
+> seeds through the same stress harness. Compare old validation with bridge
+> nominal only to quantify the harness change; estimate the meal effect only as
+> hidden meal minus the matched bridge nominal.
 
 The first comparison is one matched CPO cell under the same hidden meal:
 
@@ -52,6 +62,10 @@ The formal path is:
 | `jobs/evaluate_author_v1_t1d_stress.slurm` | run the pinned evaluator and record `v1_use_meal_hyper_check=false` |
 | `scripts/run_author_v1_cpo_unannounced_meal_local.sh` | run and validate the first local two-arm pair |
 | `scripts/submit_author_v1_unannounced_meal_pair.sh` | submit the two full SURF arms |
+| `scripts/check_author_v1_unannounced_meal_status.sh` | check one algorithm once and validate it when complete |
+| `scripts/check_author_v1_unannounced_meal_person_ac_status.sh` | check the Person A/C algorithms with one shared Slurm snapshot |
+| `scripts/submit_author_v1_unannounced_meal_validation_bridge.sh` | submit matched nominal and hidden-meal pairs for all eight algorithms |
+| `scripts/check_author_v1_unannounced_meal_validation_bridge_status.sh` | check the full bridge once and validate complete pairs |
 
 `experiments/02_meal_shift_sanity.py`, `experiments/06_test_meal.py`, and the
 meal-shift portion of `test_interface.py` modify announced schedules. They are
@@ -115,6 +129,7 @@ From the repository root, this focused preflight should pass:
   test -f author_v1_GlucoAlg_50d3134.tar.gz
   test -f author_v1_GlucoSim_6522d49.tar.gz
   test -f author_v1_all_baselines_evaluation/t1d_checkpoint_manifest.json
+  test -f configs/author_v1_hf_revisions.json
   test -f patches/glucosim_v1_python313.patch
   test -f patches/glucosim_v1_stress_diagnostics.patch
   test -f patches/glucoalg_v1_stress_eval.patch
@@ -122,10 +137,31 @@ From the repository root, this focused preflight should pass:
   test -f scripts/author_v1_stress_hook.py
   test -x scripts/submit_author_v1_unannounced_meal_pair.sh
   test -x scripts/run_author_v1_cpo_unannounced_meal_local.sh
+  test -x scripts/check_author_v1_unannounced_meal_status.sh
+  test -x scripts/check_author_v1_unannounced_meal_person_ac_status.sh
+  test -x scripts/submit_author_v1_unannounced_meal_validation_bridge.sh
+  test -x scripts/check_author_v1_unannounced_meal_validation_bridge_status.sh
+  test -f scripts/download_t1d_baseline_checkpoints.py
+  test -f scripts/download_author_v1_transitions.py
+  test -f jobs/download_t1d_baseline_checkpoints.slurm
   test -f external/GlucoAlg/saved_files/dynamics_predictor/ba_node_b5_p24_h24/42/config.yaml
   test -f external/GlucoAlg/saved_files/dynamics_predictor/ba_node_b5_p24_h24/42/best_model.pth
   test "$(find external/GlucoAlg/saved_files/env_transitions \
     -type f -name '*.npz' | wc -l)" -eq 180
+
+  "${RTIDM_VENV:-$HOME/venvs/rtidm}/bin/python" \
+    scripts/download_t1d_baseline_checkpoints.py \
+    --glucoalg-dir external/GlucoAlg \
+    --manifest author_v1_all_baselines_evaluation/t1d_checkpoint_manifest.json \
+    --revisions-file configs/author_v1_hf_revisions.json \
+    --algorithms CPO CUP FOCOPS OnCRPO PCPO PPOLag RCPO TRPOLag \
+    --verify-only
+
+  "${RTIDM_VENV:-$HOME/venvs/rtidm}/bin/python" \
+    scripts/download_author_v1_transitions.py \
+    --glucoalg-dir external/GlucoAlg \
+    --revisions-file configs/author_v1_hf_revisions.json \
+    --verify-only
 
   echo "unannounced-meal preflight passed"
 )
@@ -205,10 +241,11 @@ PY
 A controller can terminate before all seven daily events. Delivered counts may
 therefore differ, but the planned list and episode seed must match.
 
-## 5. Submit a full CPO pair on SURF
+## 5. Submit an 81-cell hidden-meal gate on SURF
 
-After the one-cell gate passes, submit both CPO arms for all 81
-patient/checkpoint cells:
+After the one-cell gate passes, this command submits both CPO arms for all 81
+patient/checkpoint cells. It is a complete hidden-meal matrix, but by itself it
+is not a validation comparator because it has no matched nominal scenario:
 
 ```bash
 bash scripts/submit_author_v1_unannounced_meal_pair.sh \
@@ -239,6 +276,9 @@ aggregations and the pairing validator. Optional arguments are:
 RESULT_COLLECTION  REPLICATE_ID  ALGORITHM  EPISODES  LOGIT_PENALTY
 ```
 
+An optional sixth argument selects `nominal` or `unannounced_meal_60g`; the
+default is `unannounced_meal_60g`.
+
 To run another algorithm, change only the algorithm while retaining the same
 replicate id and protocol, for example:
 
@@ -253,16 +293,84 @@ Supported algorithms are:
 CPO  CUP  FOCOPS  OnCRPO  PCPO  PPOLag  RCPO  TRPOLag
 ```
 
-## 6. Validate the full 81-cell pair
+For the current stress-test allocation, Person A owns `CPO` and `CUP`, while
+Person C owns `PCPO` and `PPOLag`. The CPO jobs already recorded in
+[`AUTHOR_V1_UNANNOUNCED_MEAL_RUN_STATUS.md`](AUTHOR_V1_UNANNOUNCED_MEAL_RUN_STATUS.md)
+must not be resubmitted. Submit the remaining three algorithms:
+
+```bash
+for algorithm in CUP PCPO PPOLag; do
+  bash scripts/submit_author_v1_unannounced_meal_pair.sh \
+    "$algorithm" 1 0 10 author_v1_unannounced_meal_evaluation
+done
+```
+
+If the shared checkpoint verification in Section 4.6 is still waiting on one
+Slurm download job, do not poll it and do not race the evaluations against it.
+Attach both smoke jobs to that prerequisite:
+
+```bash
+STRESS_AFTEROK_JOB_ID="$checkpoint_job" \
+  bash scripts/submit_author_v1_unannounced_meal_pair.sh \
+  CUP 1 0 10 author_v1_unannounced_meal_evaluation
+```
+
+The dependent full arrays retain their existing dependency on the smoke jobs.
+In a shared checkout, the checkpoint job must download all eight algorithms as
+specified in Section 4.4; a partial download rewrites the shared manifest and
+is only appropriate for a separate checkout.
+
+Their combined checker takes exactly one queue snapshot and one accounting
+snapshot, then performs file completeness checks and, for complete algorithms,
+runs the validators. It never sleeps or polls:
+
+```bash
+bash scripts/check_author_v1_unannounced_meal_person_ac_status.sh
+```
+
+### 5.1 Submit the formal all-algorithm validation bridge
+
+Use a fresh result collection containing both scenarios for all eight
+algorithms. The helper deliberately enforces ten independent episode seeds per
+cell. Set the two-hour Slurm time limit at submission without changing the
+shared evaluation job:
+
+```bash
+SBATCH_TIMELIMIT=02:00:00 \
+  bash scripts/submit_author_v1_unannounced_meal_validation_bridge.sh \
+  10 0 10 author_v1_unannounced_meal_validation_bridge_10seed
+```
+
+This submits, for every algorithm:
+
+```text
+nominal: no Shield + predictive Shield
+hidden 60 g: no Shield + predictive Shield
+```
+
+Each arm contains all 81 patient/checkpoint cells. The bridge contains
+`8 algorithms x 2 scenarios x 2 arms x 81 cells x 10 seeds = 25920`
+episode trajectories. Within each cell, the stress hook explicitly resets the
+simulator with literal seeds `22` through `31`.
+Do not reuse `author_v1_unannounced_meal_evaluation`; that collection is the
+earlier hidden-meal-only gate.
+
+Check the bridge once, without polling:
+
+```bash
+bash scripts/check_author_v1_unannounced_meal_validation_bridge_status.sh
+```
+
+## 6. Validate one 81-cell scenario pair
 
 Set the run values:
 
 ```bash
 ALGORITHM=CPO
-EPISODES=1
+EPISODES=10
 REPLICATE_ID=0
 PENALTY=10
-RESULT_COLLECTION=author_v1_unannounced_meal_evaluation
+RESULT_COLLECTION=author_v1_unannounced_meal_validation_bridge_10seed
 ROOT="$RESULT_COLLECTION/unannounced_meal_60g/replicate$REPLICATE_ID"
 BASE_ROOT="$ROOT/no_shield/t1d/$ALGORITHM"
 SHIELD_ROOT="$ROOT/predictive_penalty${PENALTY}/t1d/$ALGORITHM"
@@ -311,15 +419,21 @@ Report TIR, Risk Index, CV, early termination, and the number of delivered
 hidden meals together. Record the repository commit, scenario, replicate id,
 episode count, penalty, and the exact hyper-check metadata.
 
-The primary comparison is arm B minus arm A under the same unexpected-meal
-plan. For a meal-effect claim, additionally run or reuse the matched nominal
-pair from the same stress harness and the same replicate id. Do not compare
-against an older nominal collection with different seed handling or a different
-hyper-check setting.
+The Shield comparison is arm B minus arm A under the same scenario. For a meal
+effect, use only the two scenarios in the bridge collection:
+
+```text
+no-Shield meal effect = hidden no Shield - bridge nominal no Shield
+predictive meal effect = hidden predictive - bridge nominal predictive
+```
+
+The older validation collection is not the meal-effect denominator because it
+used different simulator-key reset semantics. Report bridge nominal minus old
+validation separately as a harness-change diagnostic.
 
 ## 8. Final checklist
 
-- [ ] Scenario is exactly `unannounced_meal_60g`.
+- [ ] The formal bridge contains both `nominal` and `unannounced_meal_60g`.
 - [ ] Planned events are daily `15:00`, `60 g` events for seven days.
 - [ ] Events are injected post-action and pre-step, not placed in
       `scenario_meals`.
@@ -330,4 +444,6 @@ hyper-check setting.
 - [ ] Both 81-cell aggregations and the pairing validator pass.
 - [ ] The matched nominal comparator uses the same stress harness, replicate,
       and hyper-check setting.
+- [ ] Both scenarios contain ten detailed episode rows per cell with literal
+      corrected simulator seeds `22..31`.
 - [ ] The separate hyper-250 run is not mixed into the primary comparison.
