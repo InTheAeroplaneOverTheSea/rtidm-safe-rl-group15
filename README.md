@@ -33,3 +33,8 @@ Clone the repository with submodules:
 ```bash
 git clone --recurse-submodules https://github.com/InTheAeroplaneOverTheSea/rtidm-safe-rl-group15.git
 ```
+
+## Validation guide
+
+Team members validating the eight author-v1 T1D baselines should follow the
+step-by-step [`3 + 3 + 2` validation tutorial](docs/AUTHOR_V1_T1D_VALIDATION_TUTORIAL.md).
