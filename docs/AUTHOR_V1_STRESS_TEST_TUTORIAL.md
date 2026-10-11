@@ -1,12 +1,12 @@
-# Author-v1 Shield stress-test tutorial for SURF
+# Author-v1 Shield sensor-noise stress-test tutorial for SURF
 
 Last updated: 2026-10-11
 
 This is the step-by-step team tutorial for running the author-v1 T1D policies
-with and without the predictive Shield under matched sensor-noise and
-unannounced-meal stress. It follows the same operational style as the baseline
-validation tutorial: a teammate should only need an assigned algorithm name,
-access to SURF, and the commands below.
+with and without the predictive Shield under matched sensor-noise stress. It
+follows the same operational style as the baseline validation tutorial: a
+teammate should only need an assigned algorithm name, access to SURF, and the
+commands below.
 
 The workflow keeps the following artifacts pinned:
 
@@ -16,203 +16,134 @@ The workflow keeps the following artifacts pinned:
 - the group's BA-NODE predictor;
 - the same patient/checkpoint matrix for no Shield and predictive Shield.
 
-Do not run the old announced meal-shift example as the meal stress in this
-experiment. The formal meal scenario below is hidden from the policy and
-Shield until after their current action has been selected.
+The unexpected-meal study is intentionally outside this matrix. Use
+[`AUTHOR_V1_UNANNOUNCED_MEAL_TUTORIAL.md`](AUTHOR_V1_UNANNOUNCED_MEAL_TUTORIAL.md)
+for its protocol, comparison groups, and commands.
 
-## 1. Short version for teammates
+## 1. Short version: run calibration first
 
-One person completes the shared remote setup in Section 4. After that, a
-validator assigned `CUP` can submit all three matched scenarios with:
+Do not submit the full eight-algorithm matrix yet. After completing the shared
+SURF setup in Section 4, the coordinator submits only the one-cell CPO
+calibration:
 
 ```bash
 cd "$HOME/projects/rtidm-safe-rl-group15"
 git switch main
 git pull --ff-only
 
-ALGORITHM=CUP
-bash scripts/submit_author_v1_stress_pair.sh "$ALGORITHM" nominal 1 0 10
-bash scripts/submit_author_v1_stress_pair.sh "$ALGORITHM" sensor_sigma15 1 0 10
-bash scripts/submit_author_v1_stress_pair.sh "$ALGORITHM" unannounced_meal_60g 1 0 10
+bash scripts/submit_author_v1_cpo_stress_calibration.sh 10 0 10
 ```
 
-Each command submits a no-Shield smoke job, a predictive-Shield smoke job, and
-two dependent full arrays. Do not submit the same algorithm and scenario twice
-into the same result collection.
+This submits eight scenarios times two conditions, all restricted to array cell
+`0` (`child#002`, CPO policy seed `0`). Each job runs ten literal episode seeds
+`22` through `31`. It does not release cells `1-80` and does not submit any
+other algorithm. The calibration helper requests eight hours per job by
+default, overriding the evaluation job's one-hour full-matrix default. To use a
+different limit explicitly, set `CALIBRATION_TIME_LIMIT` in
+`[days-]HH:MM:SS` format.
 
-After all cells finish, set `SCENARIO` and `ALGORITHM` and copy the three
-validation commands from Section 9. The result is reportable only when both
-condition validators and the paired-disturbance validator print `PASS`.
+Do not repeatedly monitor the jobs. Record the printed job IDs, log out, and
+check them later using the commands in Section 8. After they finish, run:
 
-The short version assumes all checks in Section 4 already pass. A missing
-archive, manifest, checkpoint, transition file, or predictor will deliberately
-stop the evaluation job.
+```bash
+python scripts/analyze_author_v1_cpo_stress_calibration.py \
+  author_v1_stress_calibration
+```
+
+Only after the diagnostics pass and the drift severity is frozen should the
+team use the full-matrix helpers.
 
 ## 2. What stress is actually applied
 
-The submission workflow exposes exactly three formal scenarios:
+The intended primary matrix contains six canonical sensor scenarios, including
+the matched nominal control:
 
-| Scenario | Intervention | Purpose |
+| Scenario | Intervention | Status before calibration |
 | --- | --- | --- |
-| `nominal` | no extra stress | matched control under the corrected seed handling |
-| `sensor_sigma15` | set CGM observation-noise sigma to `15 mg/dL` | strong measurement noise |
-| `unannounced_meal_60g` | add `60 g` at `15:00` every simulated day | surprise carbohydrate disturbance |
+| `nominal` | unchanged author-v1 noise configuration | fixed |
+| `gaussian_sigma15` | replace minute-level Gaussian sigma `1.5` with `15 mg/dL` | fixed |
+| `bias_positive` | set constant additive CGM bias to `+10 mg/dL` | candidate fixed value |
+| `bias_negative` | set constant additive CGM bias to `-10 mg/dL` | candidate fixed value |
+| `random_walk_drift` | set per-minute scale-walk sigma to `0.003` | provisional |
+| `dropout_markov_v1` | five-minute Markov gaps, entry `0.003`, recovery `0.2917` | candidate fixed model |
 
-### 2.1 Nominal matched control
+`sensor_sigma15` remains an accepted input alias, but scripts normalize it to
+`gaussian_sigma15`; it must not create a separate result set. Calibration also
+uses `drift_sigma0025_calibration` and `drift_sigma004_calibration`. These two
+keys are pilot-only and are not primary experiment conditions.
 
-`nominal` does not add sensor or meal stress. It is still important to rerun
-it with this workflow because the stress adapter resets the old simulator's
-JAX key explicitly before every episode. Do not use an older baseline
-collection as the numerical control for these stress runs.
+### 2.1 Native timing and nominal noise
 
-### 2.2 Sensor noise
+The pinned simulator updates its sensor once per internal minute and averages
+five minute-level CGM values into each controller observation. Nominal already
+uses Gaussian sigma `1.5`, multiplicative random-walk sigma `0.002` per minute,
+and independent native dropout probability `0.01` per minute. Native dropout
+is forward-filled before the five-minute average; it does not expose a NaN to
+the controller.
 
-`sensor_sigma15` sets the simulator field `cgm_obs_sigma_mgdl` to exactly
-`15.0`. It does not add 15 to the nominal sigma. At every observation the CGM
-sensor receives independent zero-mean Gaussian measurement noise with standard
-deviation `15 mg/dL`:
+### 2.2 Gaussian and bias
 
-```text
-observed CGM = underlying CGM + Normal(0, 15^2) mg/dL
-```
+`gaussian_sigma15` replaces the internal minute-level sigma with `15`; it does
+not add another noise layer. Ignoring clipping, averaging reduces that white
+component in the five-minute controller observation to approximately
+`15/sqrt(5) = 6.7 mg/dL`. The name refers to the configured simulator field,
+not the realized output SD.
 
-This changes what the policy and predictive Shield observe. It does not
-directly change the patient's physiological state.
+The bias scenarios change only `cgm_bias_mgdl`. Because the simulator then
+multiplies by its existing scale walk, configured `+10` or `-10` need not
+produce an exact ten-unit difference at every output sample.
 
-This is an amplification of a noise mechanism that already exists in the
-January simulator, not a new noise family. The nominal `NoiseConfig` already
-contains:
+### 2.3 Drift calibration
 
-```text
-additive Gaussian CGM sigma       1.5 mg/dL
-multiplicative scale random walk  step sigma 0.002, clipped to 0.9-1.1
-CGM dropout probability           0.01 per step
-```
+The scale walk is updated `10080` times in a complete seven-day episode and is
+clipped to `[0.9, 1.1]`. The calibration compares `0.0025`, `0.003`, and
+`0.004` with nominal `0.002`. Freeze a value using scale-boundary occupancy,
+sensor clipping, and realized error statistics before examining which setting
+makes the Shield look better or worse.
 
-The formal `sensor_sigma15` scenario changes only the first value from `1.5`
-to `15.0`; the nominal random-walk drift and dropout remain active.
+### 2.4 Markov dropout
 
-This test should not be described as disproving a claim that the Shield is
-"Gaussian-noise-proof." The paper does not give an unconditional guarantee
-against Gaussian observation noise. Its probabilistic theorem is conditional
-on the learned predictor remaining one-sided `(epsilon, alpha)`-reliable over
-the finite prediction horizon and applies only to candidate actions screened
-by the Shield. Strong sensor noise can invalidate that predictor-error
-assumption. The paper also notes that the implemented Shield can be sensitive
-to small noise near its 60-80 mg/dL transition zone and disables predictive
-verification there.
-
-Therefore, treat `sensor_sigma15` as a ten-times-nominal severity and
-degradation test. It remains useful empirically, but it is not the most novel
-candidate for exposing an unmodeled sensor failure. Persistent calibration
-bias, scale drift, and dropout should be registered and validated as separate
-future scenarios before the team uses them. The unannounced meal is the
-current workflow's most direct test of a failure mode explicitly identified by
-the paper.
-
-### 2.3 Unannounced meal
-
-`unannounced_meal_60g` preserves the normally sampled meal schedule and adds
-one extra `60 g` meal at `15:00` on each simulated day. The event order is:
+`dropout_markov_v1` is a separate five-minute observation-layer state machine:
 
 ```text
-current observation
-  -> policy proposes action
-  -> Shield accepts or changes action
-  -> evaluator injects 60 g into the pending carbohydrate state
-  -> env.step executes
-  -> later COB and CGM reveal the physiological consequence
+P(available -> unavailable) = 0.003
+P(unavailable -> available) = 0.2917
 ```
 
-The hidden meal is never inserted into `scenario_meals`. Before the event, it
-cannot appear in:
-
-- `time_until_meal`;
-- `next_meal_size`;
-- the pre-bolus flag;
-- any earlier observation used by the policy or Shield.
-
-A complete author-v1 episode is seven simulated days (`2016` five-minute
-steps), so a complete episode plans seven hidden meals. If an episode
-terminates early, fewer than seven may actually be delivered; that is a valid
-outcome and is recorded in `stress_episode_metadata.json`.
-
-### 2.4 Other stress fields Sherlock implemented
-
-The simulator interface supports more than the single Gaussian-noise scenario.
-The following fields exist in `StressConfig`, but they are not currently
-registered as formal command-line scenarios in the author-v1 stress workflow:
-
-| Interface field | Meaning | Formal workflow status |
-| --- | --- | --- |
-| `cgm_bias_mgdl` | constant CGM calibration offset | implemented in the interface; not exposed by the submit scripts |
-| `cgm_rw_sigma_bias` | random-walk increment of the multiplicative CGM scale | implemented in the interface; not exposed by the submit scripts |
-| `cgm_dropout_prob` | per-step CGM measurement dropout probability | implemented in the interface; not exposed by the submit scripts |
-| `cgm_use_ou`, `cgm_ou_sigma` | OU process noise in physiological glucose-state exchange | experimental; despite the field prefix, this is not merely CGM sensor noise |
-| `kabs_scale` | carbohydrate-absorption dynamics shift | implemented physiological OOD; not a sensor-noise scenario |
-| announced meal shift/jitter/scale | changes the scheduled meals visible in look-ahead fields | simulator sanity tests only, not the paper-aligned surprise meal |
-
-Do not add one of these fields ad hoc to a team run. A new formal scenario
-should first receive a fixed name and magnitude, be added to the stress
-registry, metadata validator, documentation, and no-Shield/Shield pairing test.
-Otherwise different teammates can silently run different experiments under
-the same label.
-
-Relevant paper sections are the
-[conditional probabilistic bound](https://arxiv.org/html/2601.21094v1#S5.SS4),
-the [implemented gating mechanism](https://arxiv.org/html/2601.21094v1#S5.SS2),
-and the [limitations and future-work discussion](https://arxiv.org/html/2601.21094v1#S7).
+During a gap, exposed CGM is forward-filled and exposed trend is zero. The same
+trace is supplied to the policy, predictive Shield, and GlucoSim's CGM-based
+meal/bolus gates. True physiological BG is retained only for outcome scoring.
+The Markov schedule uses an independent deterministic RNG stream, so it does
+not consume GlucoSim's physiology or action RNG.
 
 ## 3. Evaluation matrix and exact pairing
 
-The eight repository algorithm names are:
+The full study contains eight algorithms:
 
 ```text
 CPO  CUP  FOCOPS  OnCRPO  PCPO  PPOLag  RCPO  TRPOLag
 ```
 
-The paper calls `OnCRPO` simply `CRPO`; always use `OnCRPO` in commands and
-paths.
+For each scenario and condition there are `27 patients x 3 policy seeds = 81`
+cells. Ten seven-day evaluation episodes and two Shield conditions across all
+six scenarios would total `77,760` episodes, so full submission requires an
+explicit post-calibration decision.
 
-For one algorithm, one scenario, and one condition, the matrix is:
-
-```text
-3 cohorts (child, adolescent, adult)
-x 9 unseen patients per cohort (#002 through #010)
-x 3 policy-training seeds (0, 1, 2)
-x 1 evaluation episode initially
-= 81 cells
-```
-
-Every scenario has two conditions:
+For replicate zero, episode indices `0..9` use the literal seeds:
 
 ```text
-81 no-Shield cells + 81 predictive-Shield cells = 162 cells
+22, 23, 24, 25, 26, 27, 28, 29, 30, 31
 ```
 
-One complete eight-algorithm scenario therefore submits `1,296` array tasks.
-The three-scenario matched experiment submits `3,888` tasks. Run one CPO pair
-first instead of launching the entire matrix immediately.
+The raw JAX key is reset immediately before every episode. Replicate `r` uses
+`22 + 10000*r + episode`, so different replicate blocks cannot overlap.
+Shield/no-Shield pairs share the exact seed, normal meal schedule, sensor RNG,
+and Markov gap plan. Closed-loop trajectories may diverge after their actions
+differ.
 
-Before every episode, the evaluator creates a fresh condition-independent
-seed:
-
-```text
-SeedSequence([base_seed=22, replicate_id, episode, 20261011])
-```
-
-The algorithm and Shield condition are intentionally absent. Matched
-no-Shield and Shield cells therefore start with the same:
-
-- episode seed;
-- normal meal schedule;
-- sensor-noise stream;
-- planned hidden meals.
-
-This fixes the January simulator's stateful fixed-zero-key issue. Later
-episodes remain paired even if an earlier Shield and no-Shield episode ended at
-different steps. Multi-episode runs are supported, although the first team
-run should stay at one episode per cell for faster diagnosis.
+Primary safety metrics use the five-minute mean of true physiological
+`BG_hist`. Every controller CSV separately saves true BG, native CGM, exposed
+CGM, scale, native-dropout count, injected-gap state, and clipping flags.
 
 ## 4. Shared SURF setup: rerun this before stress testing
 
@@ -411,9 +342,12 @@ Run this block before anyone submits stress jobs:
   test -f author_v1_GlucoSim_6522d49.tar.gz
   test -f author_v1_all_baselines_evaluation/t1d_checkpoint_manifest.json
   test -f patches/glucosim_v1_python313.patch
+  test -f patches/glucosim_v1_stress_diagnostics.patch
   test -f patches/glucoalg_v1_stress_eval.patch
   test -f interface_new.py
   test -f scripts/author_v1_stress_hook.py
+  test -x scripts/submit_author_v1_cpo_stress_calibration.sh
+  test -x scripts/analyze_author_v1_cpo_stress_calibration.py
   test -f external/GlucoAlg/saved_files/dynamics_predictor/ba_node_b5_p24_h24/42/config.yaml
   test -f external/GlucoAlg/saved_files/dynamics_predictor/ba_node_b5_p24_h24/42/best_model.pth
   test "$(find external/GlucoAlg/saved_files/env_transitions \
@@ -444,8 +378,8 @@ Use the current four-person `2 + 2 + 2 + 2` allocation:
 | Person C | `PCPO`, `PPOLag` | 2 |
 | Person D | `RCPO`, `TRPOLag` | 2 |
 
-One person owns an algorithm across `nominal`, `sensor_sigma15`, and
-`unannounced_meal_60g`. Stable output paths are intentional; two people
+One person owns an algorithm across all six canonical scenarios. Stable
+output paths are intentional; two people
 submitting the same algorithm/scenario/replicate can overwrite or mix results.
 
 Each validator can record their assignment in the current shell:
@@ -457,37 +391,69 @@ printf '%s\n' "${MY_ALGORITHMS[@]}"
 
 This variable disappears after logout and does not change the repository.
 
-## 6. Pilot CPO before the full team run
+## 6. CPO calibration gate before the full team run
 
-The coordinator should first run one episode for CPO, replicate zero, penalty
-10:
+Submit exactly one patient/policy cell, ten episodes, both conditions:
 
 ```bash
-bash scripts/submit_author_v1_stress_pair.sh CPO nominal 1 0 10
-bash scripts/submit_author_v1_stress_pair.sh CPO sensor_sigma15 1 0 10
-bash scripts/submit_author_v1_stress_pair.sh CPO unannounced_meal_60g 1 0 10
+bash scripts/submit_author_v1_cpo_stress_calibration.sh 10 0 10
 ```
 
-Each command submits four jobs:
+The helper requests `08:00:00` per calibration job. This is intentional: a
+predictive-Shield smoke episode that terminates early is not a safe basis for
+estimating the runtime of ten complete seven-day episodes. Override only when
+needed, for example:
 
-1. no-Shield smoke cell `0`;
-2. predictive-Shield smoke cell `0`;
-3. no-Shield cells `1-80`, released only after its smoke succeeds;
-4. predictive-Shield cells `1-80`, released only after its smoke succeeds.
+```bash
+CALIBRATION_TIME_LIMIT=10:00:00 \
+  bash scripts/submit_author_v1_cpo_stress_calibration.sh 10 0 10
+```
 
-The smoke cell is always:
+If the pinned archives and checkpoints are already present but the refreshed
+environment setup is still queued, the calibration may be submitted now with
+an `afterok` dependency instead of polling the setup job:
+
+```bash
+CALIBRATION_AFTEROK_JOB_ID="$setup_job" \
+  bash scripts/submit_author_v1_cpo_stress_calibration.sh 10 0 10
+```
+
+Every calibration job will then start only if that one setup job completes
+successfully. Do not use this shortcut until the source archives and CPO
+checkpoint preflight in Section 4.6 has passed.
+
+This produces 16 independent jobs: eight calibration scenarios times two
+conditions. It deliberately does not use `submit_author_v1_stress_pair.sh`,
+because that helper would release the remaining 80 cells after smoke success.
+
+The calibration cell is:
 
 ```text
-child#002, policy seed 0, array index 0
+algorithm: CPO
+patient: child#002
+policy seed: 0
+array index: 0
+episode seeds: 22 through 31
 ```
 
-Do not start all eight algorithms until at least one no-Shield and Shield smoke
-pair completes with exit code `0:0` and produces all four expected output
-files.
+After every job reaches `COMPLETED`, run:
+
+```bash
+python scripts/analyze_author_v1_cpo_stress_calibration.py \
+  author_v1_stress_calibration
+```
+
+The analyzer checks the literal seeds, true-BG outcome source, required trace
+columns, finite diagnostics, and scenario metadata. It prints realized sensor
+error, minute-level scale-boundary occupancy, clipping, and gap count/duration.
+`PASS` confirms structural correctness; a human must still
+choose the drift strength from the three candidates without first selecting on
+Shield benefit.
 
 ## 7. Submit assigned algorithms
 
-For one assigned algorithm:
+Only after calibration approval, submit one assigned algorithm for all six
+canonical scenarios:
 
 ```bash
 ALGORITHM=CUP
@@ -498,9 +464,15 @@ PENALTY=10
 bash scripts/submit_author_v1_stress_pair.sh \
   "$ALGORITHM" nominal "$EPISODES" "$REPLICATE_ID" "$PENALTY"
 bash scripts/submit_author_v1_stress_pair.sh \
-  "$ALGORITHM" sensor_sigma15 "$EPISODES" "$REPLICATE_ID" "$PENALTY"
+  "$ALGORITHM" gaussian_sigma15 "$EPISODES" "$REPLICATE_ID" "$PENALTY"
 bash scripts/submit_author_v1_stress_pair.sh \
-  "$ALGORITHM" unannounced_meal_60g "$EPISODES" "$REPLICATE_ID" "$PENALTY"
+  "$ALGORITHM" bias_positive "$EPISODES" "$REPLICATE_ID" "$PENALTY"
+bash scripts/submit_author_v1_stress_pair.sh \
+  "$ALGORITHM" bias_negative "$EPISODES" "$REPLICATE_ID" "$PENALTY"
+bash scripts/submit_author_v1_stress_pair.sh \
+  "$ALGORITHM" random_walk_drift "$EPISODES" "$REPLICATE_ID" "$PENALTY"
+bash scripts/submit_author_v1_stress_pair.sh \
+  "$ALGORITHM" dropout_markov_v1 "$EPISODES" "$REPLICATE_ID" "$PENALTY"
 ```
 
 Arguments are:
@@ -509,10 +481,11 @@ Arguments are:
 ALGORITHM  SCENARIO  EPISODES  REPLICATE_ID  LOGIT_PENALTY  [RESULT_COLLECTION]
 ```
 
-Use repository algorithm spelling exactly. Supported scenarios are only:
+Use repository algorithm spelling exactly. Canonical scenarios are:
 
 ```text
-nominal  sensor_sigma15  unannounced_meal_60g
+nominal  gaussian_sigma15  bias_positive  bias_negative
+random_walk_drift  dropout_markov_v1
 ```
 
 The default result collection is `author_v1_stress_evaluation`. Do not change
@@ -523,23 +496,40 @@ can submit one entire scenario:
 
 ```bash
 bash scripts/submit_author_v1_stress_matrix.sh nominal 1 0 10
-bash scripts/submit_author_v1_stress_matrix.sh sensor_sigma15 1 0 10
-bash scripts/submit_author_v1_stress_matrix.sh unannounced_meal_60g 1 0 10
+bash scripts/submit_author_v1_stress_matrix.sh gaussian_sigma15 1 0 10
+bash scripts/submit_author_v1_stress_matrix.sh bias_positive 1 0 10
+bash scripts/submit_author_v1_stress_matrix.sh bias_negative 1 0 10
+bash scripts/submit_author_v1_stress_matrix.sh random_walk_drift 1 0 10
+bash scripts/submit_author_v1_stress_matrix.sh dropout_markov_v1 1 0 10
 ```
 
 Do not run the matrix helper once per teammate; each invocation already loops
 over all eight algorithms.
 
 For additional independent repeats, change only the replicate id and keep the
-same id for both conditions and all three scenarios, for example:
+same id for both conditions and all six scenarios, for example:
 
 ```bash
-bash scripts/submit_author_v1_stress_pair.sh CPO sensor_sigma15 1 1 10
+bash scripts/submit_author_v1_stress_pair.sh CPO gaussian_sigma15 1 1 10
 ```
 
 Reusing replicate `0` intentionally reproduces the same disturbance seeds.
 
 ## 8. Monitor jobs and check outputs
+
+For the one-cell calibration, the submission record is:
+
+```bash
+RECORD=author_v1_stress_calibration/submitted_jobs.tsv
+column -t -s $'\t' "$RECORD"
+JOB_IDS=$(tail -n +2 "$RECORD" | cut -f9 | sort -u | paste -sd, -)
+squeue -j "$JOB_IDS"
+sacct -X -j "$JOB_IDS" --format=JobID,JobName,State,ExitCode,Elapsed
+```
+
+It is not necessary to keep this command running. Log out and execute the same
+`sacct` command later. A finished calibration contains 16 top-level jobs and no
+dependent full arrays.
 
 Every submission is appended to:
 
@@ -550,7 +540,7 @@ author_v1_stress_evaluation/<scenario>/replicate<id>/submitted_jobs.tsv
 For one scenario:
 
 ```bash
-SCENARIO=sensor_sigma15
+SCENARIO=gaussian_sigma15
 REPLICATE_ID=0
 RECORD="author_v1_stress_evaluation/$SCENARIO/replicate$REPLICATE_ID/submitted_jobs.tsv"
 
@@ -581,14 +571,14 @@ Inspect a failed cell with the exact log name shown by `sacct` or list likely
 logs with:
 
 ```bash
-ls -1t slurm-*stress* slurm-*sensor15* slurm-*hidden60* 2>/dev/null | head
+ls -1t slurm-*stress* slurm-*gauss15* slurm-*gapmarkov* 2>/dev/null | head
 ```
 
 For one algorithm and scenario, count results after both arrays complete:
 
 ```bash
 ALGORITHM=CPO
-SCENARIO=sensor_sigma15
+SCENARIO=gaussian_sigma15
 REPLICATE_ID=0
 ROOT="author_v1_stress_evaluation/$SCENARIO/replicate$REPLICATE_ID"
 BASE_ROOT="$ROOT/no_shield/t1d/$ALGORITHM"
@@ -619,7 +609,7 @@ Set the values once:
 
 ```bash
 ALGORITHM=CPO
-SCENARIO=sensor_sigma15
+SCENARIO=gaussian_sigma15
 EPISODES=1
 REPLICATE_ID=0
 PENALTY=10
@@ -702,15 +692,12 @@ The stress validator additionally checks:
 - corrected episode-key mode;
 - consistent hook/interface/patch hashes;
 - exact episode seed sequences;
-- sensor sigma `15.0` for `sensor_sigma15`;
-- seven planned daily `15:00`, `60 g` events for the hidden-meal scenario.
+- sensor sigma `15.0` for `gaussian_sigma15`;
+- constant bias `+10/-10` for the two bias scenarios;
+- the exact per-minute drift sigma for drift scenarios;
+- Markov entry/recovery probabilities and the planned gap schedule.
 
-It is valid for no Shield and Shield to deliver different numbers of hidden
-meals if one controller terminates earlier. Their planned disturbance, seed,
-and normal meal schedule must still match.
-
-Repeat Section 9 for `nominal`, `sensor_sigma15`, and
-`unannounced_meal_60g`.
+Repeat Section 9 for every canonical scenario after calibration approval.
 
 ## 10. Interpret whether the Shield breaks
 
@@ -844,14 +831,14 @@ Attach the three files written under `validation_reports/`.
 - [ ] The checkpoint manifest exists and verification passes.
 - [ ] The BA-NODE predictor hashes match Section 4.5.
 - [ ] The exact repository algorithm name is used.
-- [ ] `nominal`, `sensor_sigma15`, and `unannounced_meal_60g` use the same replicate id.
+- [ ] All six canonical sensor scenarios use the same replicate id.
 - [ ] Both smoke jobs pass before the full team submission.
 - [ ] Both conditions contain 81 cells and all four required output files per cell.
 - [ ] Both aggregation validators print `Validation: PASS`.
 - [ ] The paired validator prints `Pairing validation: PASS`.
 - [ ] TIR, Risk Index, CV, and early termination are reported together.
 - [ ] Stress results are compared with the new matched nominal, not an old baseline collection.
-- [ ] Announced meal shifts are not described as unannounced meals.
+- [ ] Unexpected-meal runs follow the separate unexpected-meal tutorial.
 - [ ] Experimental interface-only noise fields are not mixed into the formal scenarios.
 - [ ] Raw outputs, archives, downloaded checkpoints, and Slurm logs are not committed to Git.
 

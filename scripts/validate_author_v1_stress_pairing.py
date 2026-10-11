@@ -19,6 +19,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("no_shield_root", type=Path)
     parser.add_argument("predictive_root", type=Path)
     parser.add_argument("--expected-episodes", type=int, required=True)
+    parser.add_argument("--expected-cells", type=int)
+    parser.add_argument("--base-evaluation-seed", type=int, default=22)
+    parser.add_argument("--replicate-id", type=int, default=0)
+    parser.add_argument("--cohorts", nargs="+", choices=COHORTS, default=COHORTS)
+    parser.add_argument(
+        "--patient-numbers", nargs="+", type=int, default=PATIENT_NUMBERS
+    )
+    parser.add_argument("--policy-seeds", nargs="+", type=int, default=POLICY_SEEDS)
     parser.add_argument("--logit-penalty", type=float, default=10.0)
     return parser.parse_args()
 
@@ -34,7 +42,8 @@ def comparable_episode(record: dict) -> dict:
         "episode_seed": record.get("episode_seed"),
         "meal_schedule_sha256": record.get("meal_schedule_sha256"),
         "planned_unannounced_meals": record.get("planned_unannounced_meals"),
-        "cgm_obs_sigma_mgdl": record.get("cgm_obs_sigma_mgdl"),
+        "planned_markov_gap_intervals": record.get("planned_markov_gap_intervals"),
+        "noise_config": record.get("noise_config"),
     }
 
 
@@ -42,16 +51,21 @@ def main() -> int:
     args = parse_args()
     if args.expected_episodes < 1:
         raise SystemExit("--expected-episodes must be positive")
+    expected_cells = args.expected_cells or (
+        len(args.cohorts) * len(args.patient_numbers) * len(args.policy_seeds)
+    )
+    if expected_cells < 1:
+        raise SystemExit("--expected-cells must be positive")
     no_root = args.no_shield_root.resolve()
     shield_root = args.predictive_root.resolve()
     shield_tag = f"with_shield_{number_tag(args.logit_penalty)}"
     errors: list[str] = []
     checked = 0
 
-    for cohort in COHORTS:
-        for patient_number in PATIENT_NUMBERS:
+    for cohort in args.cohorts:
+        for patient_number in args.patient_numbers:
             patient = f"{cohort}#{patient_number:03d}"
-            for policy_seed in POLICY_SEEDS:
+            for policy_seed in args.policy_seeds:
                 no_path = (
                     no_root
                     / patient
@@ -81,11 +95,14 @@ def main() -> int:
                     continue
 
                 for key in (
+                    "schema_version",
                     "stress_scenario",
                     "stress_config",
                     "base_evaluation_seed",
                     "replicate_id",
                     "episode_seed_policy",
+                    "sensor_time_semantics",
+                    "outcome_source",
                     "unannounced_meal_semantics",
                 ):
                     if no_payload.get(key) != shield_payload.get(key):
@@ -110,9 +127,27 @@ def main() -> int:
                         f"{patient}/seed{policy_seed}: episode seeds or planned "
                         "disturbances are not paired"
                     )
+                expected_seeds = [
+                    args.base_evaluation_seed
+                    + args.replicate_id * 10_000
+                    + episode
+                    for episode in range(args.expected_episodes)
+                ]
+                actual_seeds = [
+                    int(record.get("episode_seed", -1)) for record in no_episodes
+                ]
+                if actual_seeds != expected_seeds:
+                    errors.append(
+                        f"{patient}/seed{policy_seed}: expected literal episode "
+                        f"seeds {expected_seeds}, found {actual_seeds}"
+                    )
                 checked += 1
 
-    print(f"Paired stress cells: {checked}/81")
+    print(f"Paired stress cells: {checked}/{expected_cells}")
+    if checked != expected_cells:
+        errors.append(
+            f"expected {expected_cells} paired cells, found {checked}"
+        )
     if errors:
         print("Pairing validation failed:", file=sys.stderr)
         for error in errors:

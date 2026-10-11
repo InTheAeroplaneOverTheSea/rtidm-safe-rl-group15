@@ -12,9 +12,13 @@
 
 set -euo pipefail
 
-ALGORITHM="${1:?Usage: $0 ALGORITHM {no_shield|predictive} {nominal|sensor_sigma15|unannounced_meal_60g} [episodes] [replicate_id] [penalty] [result_collection]}"
-CONDITION="${2:?Usage: $0 ALGORITHM {no_shield|predictive} {nominal|sensor_sigma15|unannounced_meal_60g} [episodes] [replicate_id] [penalty] [result_collection]}"
-STRESS_SCENARIO="${3:?Usage: $0 ALGORITHM {no_shield|predictive} {nominal|sensor_sigma15|unannounced_meal_60g} [episodes] [replicate_id] [penalty] [result_collection]}"
+ALGORITHM="${1:?Usage: $0 ALGORITHM CONDITION STRESS_SCENARIO [episodes] [replicate_id] [penalty] [result_collection]}"
+CONDITION="${2:?Usage: $0 ALGORITHM CONDITION STRESS_SCENARIO [episodes] [replicate_id] [penalty] [result_collection]}"
+REQUESTED_STRESS_SCENARIO="${3:?Usage: $0 ALGORITHM CONDITION STRESS_SCENARIO [episodes] [replicate_id] [penalty] [result_collection]}"
+case "${REQUESTED_STRESS_SCENARIO}" in
+    sensor_sigma15) STRESS_SCENARIO="gaussian_sigma15" ;;
+    *) STRESS_SCENARIO="${REQUESTED_STRESS_SCENARIO}" ;;
+esac
 EPISODES="${4:-1}"
 REPLICATE_ID="${5:-0}"
 LOGIT_PENALTY="${6:-10}"
@@ -27,12 +31,17 @@ GLUCOSIM_ARCHIVE="${PROJECT_DIR}/author_v1_GlucoSim_6522d49.tar.gz"
 GLUCOALG_ARCHIVE_SHA256="e2f775bd0a75fbbb657628708e98efe6d684dd5109edf7268c6e396cb5aa253f"
 GLUCOSIM_ARCHIVE_SHA256="3e8f7e48e8606f7136bd372898fd855d84fc959a70736cdf4b8db34c88063ba0"
 GLUCOSIM_COMPAT_PATCH="${PROJECT_DIR}/patches/glucosim_v1_python313.patch"
+GLUCOSIM_STRESS_PATCH="${PROJECT_DIR}/patches/glucosim_v1_stress_diagnostics.patch"
 GLUCOALG_STRESS_PATCH="${PROJECT_DIR}/patches/glucoalg_v1_stress_eval.patch"
 STRESS_INTERFACE="${PROJECT_DIR}/interface_new.py"
 STRESS_HOOK="${PROJECT_DIR}/scripts/author_v1_stress_hook.py"
+AUTHOR_V1_REVISIONS="${PROJECT_DIR}/configs/author_v1_hf_revisions.json"
+CHECKPOINT_VERIFIER="${PROJECT_DIR}/scripts/download_t1d_baseline_checkpoints.py"
+TRANSITION_VERIFIER="${PROJECT_DIR}/scripts/download_author_v1_transitions.py"
 POLICY_BASE="${PROJECT_DIR}/external/GlucoAlg/saved_models/t1d"
 POLICY_MANIFEST="${PROJECT_DIR}/author_v1_all_baselines_evaluation/t1d_checkpoint_manifest.json"
 TRANSITIONS_SOURCE="${PROJECT_DIR}/external/GlucoAlg/saved_files/env_transitions"
+TRANSITION_MANIFEST="${PROJECT_DIR}/external/GlucoAlg/saved_files/author_v1_transition_manifest.json"
 PREDICTOR_SOURCE="${PROJECT_DIR}/external/GlucoAlg/saved_files/dynamics_predictor/ba_node_b5_p24_h24/42"
 TASK_INDEX="${SLURM_ARRAY_TASK_ID:?This job must be submitted as a Slurm array.}"
 
@@ -45,7 +54,7 @@ case "${CONDITION}" in
     *) echo "Condition must be no_shield or predictive, got ${CONDITION}" >&2; exit 2 ;;
 esac
 case "${STRESS_SCENARIO}" in
-    nominal|sensor_sigma15|unannounced_meal_60g) ;;
+    nominal|gaussian_sigma15|bias_positive|bias_negative|random_walk_drift|dropout_markov_v1|unannounced_meal_60g|drift_sigma0025_calibration|drift_sigma004_calibration) ;;
     *) echo "Unsupported stress scenario: ${STRESS_SCENARIO}" >&2; exit 2 ;;
 esac
 if [[ ! "${EPISODES}" =~ ^[1-9][0-9]*$ ]]; then
@@ -83,9 +92,12 @@ for required in \
     "${GLUCOALG_ARCHIVE}" \
     "${GLUCOSIM_ARCHIVE}" \
     "${GLUCOSIM_COMPAT_PATCH}" \
+    "${GLUCOSIM_STRESS_PATCH}" \
     "${GLUCOALG_STRESS_PATCH}" \
     "${STRESS_INTERFACE}" \
     "${STRESS_HOOK}" \
+    "${AUTHOR_V1_REVISIONS}" \
+    "${CHECKPOINT_VERIFIER}" \
     "${POLICY_MANIFEST}"; do
     test -f "${required}"
 done
@@ -94,7 +106,7 @@ test -d "${TMPDIR}"
 printf '%s  %s\n%s  %s\n' \
     "${GLUCOALG_ARCHIVE_SHA256}" "${GLUCOALG_ARCHIVE}" \
     "${GLUCOSIM_ARCHIVE_SHA256}" "${GLUCOSIM_ARCHIVE}" \
-    | sha256sum --check --strict
+    | sha256sum -c -
 
 POLICY_SOURCE="${POLICY_BASE}/${COHORT}/${ALGORITHM}/seed${POLICY_SEED}"
 test -f "${POLICY_SOURCE}/config.json"
@@ -102,18 +114,22 @@ test -f "${POLICY_SOURCE}/torch_save/epoch-2441.pt"
 if [[ "${CONDITION}" == "predictive" ]]; then
     test -f "${PREDICTOR_SOURCE}/config.yaml"
     test -f "${PREDICTOR_SOURCE}/best_model.pth"
+    test -f "${TRANSITION_VERIFIER}"
+    test -f "${TRANSITION_MANIFEST}"
     test -d "${TRANSITIONS_SOURCE}"
 fi
 source "${VENV_DIR}/bin/activate"
 
-python -u "${PROJECT_DIR}/scripts/download_t1d_baseline_checkpoints.py" \
+python -u "${CHECKPOINT_VERIFIER}" \
     --glucoalg-dir "${PROJECT_DIR}/external/GlucoAlg" \
     --manifest "${POLICY_MANIFEST}" \
+    --revisions-file "${AUTHOR_V1_REVISIONS}" \
     --algorithms "${ALGORITHM}" \
     --verify-only
 if [[ "${CONDITION}" == "predictive" ]]; then
-    python -u "${PROJECT_DIR}/scripts/download_author_v1_transitions.py" \
+    python -u "${TRANSITION_VERIFIER}" \
         --glucoalg-dir "${PROJECT_DIR}/external/GlucoAlg" \
+        --revisions-file "${AUTHOR_V1_REVISIONS}" \
         --verify-only
 fi
 
@@ -124,6 +140,7 @@ mkdir -p "${WORK_GLUCOALG}" "${WORK_GLUCOSIM}"
 tar -xzf "${GLUCOALG_ARCHIVE}" -C "${WORK_GLUCOALG}"
 tar -xzf "${GLUCOSIM_ARCHIVE}" -C "${WORK_GLUCOSIM}"
 patch --batch --forward -p1 -d "${WORK_GLUCOSIM}" < "${GLUCOSIM_COMPAT_PATCH}"
+patch --batch --forward -p1 -d "${WORK_GLUCOSIM}" < "${GLUCOSIM_STRESS_PATCH}"
 cp "${STRESS_INTERFACE}" "${WORK_GLUCOALG}/interface_new.py"
 cp "${STRESS_HOOK}" "${WORK_GLUCOALG}/author_v1_stress_hook.py"
 patch --batch --forward -p1 -d "${WORK_GLUCOALG}" < "${GLUCOALG_STRESS_PATCH}"
@@ -164,7 +181,9 @@ sync_results() {
             echo "glucoalg_commit=50d3134fd6f0e01019295be0d6b99f110f794753"
             echo "glucosim_commit=6522d49ee1e6c1fd34f287519a5d41df735bbd38"
             echo "glucosim_compat_patch=python313_typing_only"
+            echo "glucosim_stress_diagnostics_patch_sha256=$(sha256sum "${GLUCOSIM_STRESS_PATCH}" | cut -d ' ' -f 1)"
             echo "stress_scenario=${STRESS_SCENARIO}"
+            echo "requested_stress_scenario=${REQUESTED_STRESS_SCENARIO}"
             echo "stress_semantics=post_action_pre_step"
             echo "stress_interface_sha256=$(sha256sum "${STRESS_INTERFACE}" | cut -d ' ' -f 1)"
             echo "stress_hook_sha256=$(sha256sum "${STRESS_HOOK}" | cut -d ' ' -f 1)"

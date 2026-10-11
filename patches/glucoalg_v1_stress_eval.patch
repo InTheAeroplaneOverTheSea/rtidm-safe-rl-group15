@@ -12,40 +12,88 @@
 +            obs, info = env.reset(seed=seed + episode)
 +        else:
 +            obs, info = stress_controller.reset_episode(env, episode)
-@@ -458,0 +464,6 @@
+@@ -396,0 +402,8 @@
++            'Native_CGM': [],
++            'CGM_Trend': [],
++            'CGM_Scale': [],
++            'CGM_Scale_Boundary_Count': [],
++            'Native_Dropout_Count': [],
++            'Injected_Markov_Dropout': [],
++            'Sensor_Clip_Count': [],
++            'Exposed_Sensor_Clipped': [],
+@@ -458,0 +472,6 @@
 +            # Surprise meals must be injected only after both the policy and
 +            # Shield have selected this step's action.  They never appear in
 +            # the scheduled-meal look-ahead observation.
 +            if stress_controller is not None:
 +                stress_controller.before_step()
 +
-@@ -672 +683,3 @@
+@@ -460,0 +480,2 @@
++            if stress_controller is not None:
++                next_obs, info = stress_controller.after_step(next_obs, info)
+@@ -481,4 +502,7 @@
+-            # Track glucose metrics
+-            cgm_raw = info.get('cgm', obs_single[0])
+-            cgm = float(np.asarray(cgm_raw).squeeze())
+-            glucose_values.append(cgm)
++            # Primary safety metrics use true physiological BG. Sensor traces
++            # remain separate diagnostics and are the only glucose values
++            # exposed to the policy and Shield.
++            true_bg = float(np.asarray(info['true_bg_mgdl']).squeeze())
++            native_cgm = float(np.asarray(info['native_cgm_mgdl']).squeeze())
++            exposed_cgm = float(np.asarray(info['exposed_cgm_mgdl']).squeeze())
++            glucose_values.append(true_bg)
+@@ -487 +511 @@
+-            if cgm < 70:
++            if true_bg < 70:
+@@ -491 +515 @@
+-            if cgm > 250:
++            if true_bg > 250:
+@@ -497,2 +521,10 @@
+-            history['BG'].append(cgm)  # Use CGM as BG for simplicity
+-            history['CGM'].append(cgm)
++            history['BG'].append(true_bg)
++            history['CGM'].append(exposed_cgm)
++            history['Native_CGM'].append(native_cgm)
++            history['CGM_Trend'].append(float(info['exposed_cgm_trend_mgdl']))
++            history['CGM_Scale'].append(float(info['cgm_scale']))
++            history['CGM_Scale_Boundary_Count'].append(int(info['cgm_scale_boundary_count']))
++            history['Native_Dropout_Count'].append(int(info['native_dropout_count']))
++            history['Injected_Markov_Dropout'].append(bool(info['injected_markov_dropout']))
++            history['Sensor_Clip_Count'].append(int(info['sensor_clip_count']))
++            history['Exposed_Sensor_Clipped'].append(bool(info['exposed_sensor_clipped']))
+@@ -508,2 +540,2 @@
+-            history['LBGI'].append(max(0, (39.0 - cgm)**1.084) if cgm < 39 else 0)  # Simplified LBGI
+-            history['HBGI'].append(max(0, (cgm - 180.0)**1.084) if cgm > 180 else 0)  # Simplified HBGI
++            history['LBGI'].append(max(0, (39.0 - true_bg)**1.084) if true_bg < 39 else 0)  # Simplified LBGI
++            history['HBGI'].append(max(0, (true_bg - 180.0)**1.084) if true_bg > 180 else 0)  # Simplified HBGI
+@@ -672 +704,3 @@
 -         save_plots: bool = False, logit_penalty: float | None = None):
 +         save_plots: bool = False, logit_penalty: float | None = None,
 +         stress_scenario: str = 'nominal', evaluation_seed: int = 22,
 +         replicate_id: int = 0):
-@@ -696,2 +709 @@
+@@ -696,2 +730 @@
 -    # Set evaluation seed
 -    eval_seed = 22
 +    eval_seed = evaluation_seed
-@@ -705,0 +718,6 @@
+@@ -705,0 +739,6 @@
 +    stress_controller = AuthorV1StressController(
 +        env,
 +        scenario=stress_scenario,
 +        base_seed=eval_seed,
 +        replicate_id=replicate_id,
 +    )
-@@ -720 +738,2 @@
+@@ -720 +759,2 @@
 -                           shield_type=shield_type, save_plots=save_plots, logit_penalty=penalty_value)
 +                           shield_type=shield_type, save_plots=save_plots, logit_penalty=penalty_value,
 +                           stress_controller=stress_controller)
-@@ -725,0 +745 @@
+@@ -725,0 +766 @@
 +    stress_controller.write_metadata(output_dir)
-@@ -812,0 +833,3 @@
+@@ -812,0 +854,3 @@
 +    parser.add_argument("--stress-scenario", choices=sorted(STRESS_SCENARIOS), default="nominal")
 +    parser.add_argument("--evaluation-seed", type=int, default=22)
 +    parser.add_argument("--replicate-id", type=int, default=0)
-@@ -843,0 +867,3 @@
+@@ -843,0 +888,3 @@
 +        args.stress_scenario,
 +        args.evaluation_seed,
 +        args.replicate_id,

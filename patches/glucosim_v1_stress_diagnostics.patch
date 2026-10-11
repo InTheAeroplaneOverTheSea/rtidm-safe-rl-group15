@@ -1,0 +1,50 @@
+--- a/glucosim/simglucose/sim/patient_transition.py
++++ b/glucosim/simglucose/sim/patient_transition.py
+@@ -93,0 +94,6 @@
++    cgm_native_dropout = jnp.isnan(cgm_now)
++    cgm_sensor_clipped = jnp.logical_and(
++        jnp.logical_not(cgm_native_dropout),
++        jnp.logical_or(cgm_now <= 40.0, cgm_now >= 400.0),
++    )
++    cgm_scale_at_boundary = jnp.logical_or(cgm_scale <= 0.9, cgm_scale >= 1.1)
+@@ -115,0 +122,3 @@
++        'cgm_native_dropout': cgm_native_dropout,
++        'cgm_sensor_clipped': cgm_sensor_clipped,
++        'cgm_scale_at_boundary': cgm_scale_at_boundary,
+--- a/glucosim/simglucose/sim/reset.py
++++ b/glucosim/simglucose/sim/reset.py
+@@ -104,0 +105,8 @@
++        "cgm_native_dropout": jnp.isnan(cgm0_mgdl),
++        "cgm_sensor_clipped": jnp.logical_and(
++            jnp.logical_not(jnp.isnan(cgm0_mgdl)),
++            jnp.logical_or(cgm0_mgdl <= 40.0, cgm0_mgdl >= 400.0),
++        ),
++        "cgm_scale_at_boundary": jnp.logical_or(
++            cgm_scale_new <= 0.9, cgm_scale_new >= 1.1
++        ),
+@@ -157,0 +166,8 @@
++        "cgm_native_dropout": jnp.isnan(cgm_warm),
++        "cgm_sensor_clipped": jnp.logical_and(
++            jnp.logical_not(jnp.isnan(cgm_warm)),
++            jnp.logical_or(cgm_warm <= 40.0, cgm_warm >= 400.0),
++        ),
++        "cgm_scale_at_boundary": jnp.logical_or(
++            cgm_scale_new <= 0.9, cgm_scale_new >= 1.1
++        ),
+--- a/glucosim/simglucose/sim/step.py
++++ b/glucosim/simglucose/sim/step.py
+@@ -271,0 +272,3 @@
++    native_dropout_count = 0
++    sensor_clip_count = 0
++    cgm_scale_boundary_count = 0
+@@ -331,0 +335,3 @@
++        native_dropout_count += carry['cgm_native_dropout'].astype(jnp.int32)
++        sensor_clip_count += carry['cgm_sensor_clipped'].astype(jnp.int32)
++        cgm_scale_boundary_count += carry['cgm_scale_at_boundary'].astype(jnp.int32)
+@@ -474,0 +481,6 @@
++            'true_bg_mgdl': bg_avg,
++            'native_cgm_mgdl': cgm_avg,
++            'cgm_scale': new_state['cgm_scale'],
++            'native_dropout_count': native_dropout_count,
++            'sensor_clip_count': sensor_clip_count,
++            'cgm_scale_boundary_count': cgm_scale_boundary_count,

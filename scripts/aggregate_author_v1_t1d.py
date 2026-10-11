@@ -102,7 +102,17 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--stress-scenario",
-        choices=("nominal", "sensor_sigma15", "unannounced_meal_60g"),
+        choices=(
+            "nominal",
+            "gaussian_sigma15",
+            "bias_positive",
+            "bias_negative",
+            "random_walk_drift",
+            "dropout_markov_v1",
+            "unannounced_meal_60g",
+            "drift_sigma0025_calibration",
+            "drift_sigma004_calibration",
+        ),
         help=(
             "Validate a stress-harness result instead of the original "
             "author-v1 evaluator output."
@@ -114,6 +124,7 @@ def parse_args() -> argparse.Namespace:
         default=0,
         help="Expected stress replicate id (default: 0).",
     )
+    parser.add_argument("--base-evaluation-seed", type=int, default=22)
     parser.add_argument(
         "--paper-tir-mean",
         type=float,
@@ -271,6 +282,7 @@ def main() -> int:
 
                 if args.stress_scenario is not None:
                     for key in (
+                        "glucosim_stress_diagnostics_patch_sha256",
                         "stress_interface_sha256",
                         "stress_hook_sha256",
                         "stress_eval_patch_sha256",
@@ -309,19 +321,80 @@ def main() -> int:
                                     f"{args.expected_episodes} episode records, "
                                     f"found {len(stress_episodes)}",
                                 )
+                            if stress_payload.get("schema_version") != 2:
+                                fail(
+                                    errors,
+                                    f"{stress_metadata_path}: expected schema version 2",
+                                )
+                            if stress_payload.get("outcome_source") != (
+                                "true physiological BG_hist average"
+                            ):
+                                fail(
+                                    errors,
+                                    f"{stress_metadata_path}: outcomes are not true BG",
+                                )
                             episode_seed_sequences.add(
                                 tuple(
                                     int(record["episode_seed"])
                                     for record in stress_episodes
                                 )
                             )
+                            expected_episode_seeds = tuple(
+                                args.base_evaluation_seed
+                                + args.replicate_id * 10_000
+                                + episode
+                                for episode in range(args.expected_episodes)
+                            )
+                            actual_episode_seeds = tuple(
+                                int(record["episode_seed"])
+                                for record in stress_episodes
+                            )
+                            if actual_episode_seeds != expected_episode_seeds:
+                                fail(
+                                    errors,
+                                    f"{stress_metadata_path}: expected literal episode "
+                                    f"seeds {expected_episode_seeds}, found "
+                                    f"{actual_episode_seeds}",
+                                )
                             for record in stress_episodes:
-                                if args.stress_scenario == "sensor_sigma15":
-                                    if record.get("cgm_obs_sigma_mgdl") != 15.0:
+                                noise_config = record.get("noise_config", {})
+                                if args.stress_scenario == "gaussian_sigma15":
+                                    if noise_config.get("cgm_obs_sigma_mgdl") != 15.0:
                                         fail(
                                             errors,
                                             f"{stress_metadata_path}: sensor sigma "
                                             "is not 15.0",
+                                        )
+                                if args.stress_scenario == "bias_positive":
+                                    if noise_config.get("cgm_bias_mgdl") != 10.0:
+                                        fail(errors, f"{stress_metadata_path}: bias is not +10")
+                                if args.stress_scenario == "bias_negative":
+                                    if noise_config.get("cgm_bias_mgdl") != -10.0:
+                                        fail(errors, f"{stress_metadata_path}: bias is not -10")
+                                expected_drift = {
+                                    "drift_sigma0025_calibration": 0.0025,
+                                    "random_walk_drift": 0.003,
+                                    "drift_sigma004_calibration": 0.004,
+                                }.get(args.stress_scenario)
+                                if expected_drift is not None and noise_config.get(
+                                    "cgm_rw_sigma_bias"
+                                ) != expected_drift:
+                                    fail(
+                                        errors,
+                                        f"{stress_metadata_path}: unexpected drift sigma",
+                                    )
+                                if args.stress_scenario == "dropout_markov_v1":
+                                    config = stress_payload.get("stress_config", {})
+                                    expected_gap = (0.003, 0.2917, 5)
+                                    actual_gap = (
+                                        config.get("cgm_gap_entry_prob"),
+                                        config.get("cgm_gap_recovery_prob"),
+                                        config.get("cgm_gap_sampling_interval_min"),
+                                    )
+                                    if actual_gap != expected_gap:
+                                        fail(
+                                            errors,
+                                            f"{stress_metadata_path}: unexpected Markov gap config",
                                         )
                                 if args.stress_scenario == "unannounced_meal_60g":
                                     planned = record.get(

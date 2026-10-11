@@ -3,7 +3,11 @@
 # Submit one stress scenario for all eight author-v1 T1D algorithms.
 set -euo pipefail
 
-STRESS_SCENARIO="${1:?Usage: $0 {nominal|sensor_sigma15|unannounced_meal_60g} [episodes] [replicate_id] [penalty] [result_collection]}"
+REQUESTED_STRESS_SCENARIO="${1:?Usage: $0 STRESS_SCENARIO [episodes] [replicate_id] [penalty] [result_collection]}"
+case "${REQUESTED_STRESS_SCENARIO}" in
+    sensor_sigma15) STRESS_SCENARIO="gaussian_sigma15" ;;
+    *) STRESS_SCENARIO="${REQUESTED_STRESS_SCENARIO}" ;;
+esac
 EPISODES="${2:-1}"
 REPLICATE_ID="${3:-0}"
 LOGIT_PENALTY="${4:-10}"
@@ -12,7 +16,7 @@ PROJECT_DIR="${SLURM_SUBMIT_DIR:-$PWD}"
 PAIR_SCRIPT="${PROJECT_DIR}/scripts/submit_author_v1_stress_pair.sh"
 
 case "${STRESS_SCENARIO}" in
-    nominal|sensor_sigma15|unannounced_meal_60g) ;;
+    nominal|gaussian_sigma15|bias_positive|bias_negative|random_walk_drift|dropout_markov_v1|unannounced_meal_60g) ;;
     *) echo "Unsupported stress scenario: ${STRESS_SCENARIO}" >&2; exit 2 ;;
 esac
 test -f "${PAIR_SCRIPT}"

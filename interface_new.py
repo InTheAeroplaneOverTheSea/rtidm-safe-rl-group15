@@ -81,6 +81,14 @@ class StressConfig:
     # Value should typically be between 0 and 1
     # tips: Its effect may be limited because the simulator smooths/interpolates, so be brave to use a large number
 
+    # Optional observation-level two-state Markov gap model. These fields are
+    # consumed by the author-v1 evaluation adapter rather than NoiseConfig:
+    # GlucoSim's native cgm_dropout_prob is an independent per-minute event
+    # that is forward-filled before the five-minute controller observation.
+    cgm_gap_entry_prob: Optional[float] = None
+    cgm_gap_recovery_prob: Optional[float] = None
+    cgm_gap_sampling_interval_min: Optional[int] = None
+
     # Temporally correlated sensor noise
     cgm_use_ou: Optional[bool] = None # you can ignore this because it changes the some physiological mechanism parameter
     cgm_ou_sigma: Optional[float] = None # and in next update it will be moved to proper place
@@ -324,6 +332,36 @@ class GlucoSimInterface:
             updates["ou_sigma_dL"] = _finite_nonnegative(stress.cgm_ou_sigma, "cgm_ou_sigma")
         if updates:
             e.env_params = replace(e.env_params, noise_config=replace(noise, **updates))
+
+        gap_values = (
+            stress.cgm_gap_entry_prob,
+            stress.cgm_gap_recovery_prob,
+            stress.cgm_gap_sampling_interval_min,
+        )
+        if any(value is not None for value in gap_values):
+            if any(value is None for value in gap_values):
+                raise ValueError(
+                    "cgm_gap_entry_prob, cgm_gap_recovery_prob, and "
+                    "cgm_gap_sampling_interval_min must be set together"
+                )
+            entry = float(stress.cgm_gap_entry_prob)
+            recovery = float(stress.cgm_gap_recovery_prob)
+            interval = stress.cgm_gap_sampling_interval_min
+            if not np.isfinite(entry) or not 0 <= entry <= 1:
+                raise ValueError("cgm_gap_entry_prob must be between 0 and 1")
+            if not np.isfinite(recovery) or not 0 < recovery <= 1:
+                raise ValueError(
+                    "cgm_gap_recovery_prob must be greater than 0 and at most 1"
+                )
+            if isinstance(interval, bool) or not isinstance(interval, int) or interval < 1:
+                raise ValueError(
+                    "cgm_gap_sampling_interval_min must be a positive integer"
+                )
+            if interval != self.sample_time:
+                raise ValueError(
+                    "Markov gap sampling interval must match the controller "
+                    f"sample_time ({self.sample_time} minutes), got {interval}"
+                )
 
     @staticmethod
     def _meal_stress_enabled(stress: StressConfig) -> bool:

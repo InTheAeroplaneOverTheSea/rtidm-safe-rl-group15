@@ -16,9 +16,6 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
-from huggingface_hub import snapshot_download
-
-
 ALGORITHMS = {
     "CPO": "cpo",
     "CUP": "cup",
@@ -95,16 +92,21 @@ def verify_installed(
     policy_revisions: dict[str, str],
 ) -> None:
     manifest = json.loads(manifest_path.read_text())
-    if manifest.get("checkpoint_epoch") != EPOCH:
-        raise RuntimeError(
-            f"{manifest_path}: expected checkpoint_epoch {EPOCH}, "
-            f"got {manifest.get('checkpoint_epoch')!r}"
-        )
-    if manifest.get("revision_policy") != "author-v1-january-2026":
-        raise RuntimeError(
-            f"{manifest_path}: checkpoint revision policy is not author-v1; "
-            "rerun the checkpoint download job"
-        )
+    legacy_manifest = (
+        manifest.get("checkpoint_epoch") is None
+        and manifest.get("revision_policy") is None
+    )
+    if not legacy_manifest:
+        if manifest.get("checkpoint_epoch") != EPOCH:
+            raise RuntimeError(
+                f"{manifest_path}: expected checkpoint_epoch {EPOCH}, "
+                f"got {manifest.get('checkpoint_epoch')!r}"
+            )
+        if manifest.get("revision_policy") != "author-v1-january-2026":
+            raise RuntimeError(
+                f"{manifest_path}: checkpoint revision policy is not author-v1; "
+                "rerun the checkpoint download job"
+            )
     repositories = manifest.get("repositories")
     if not isinstance(repositories, dict):
         raise RuntimeError(f"{manifest_path}: repositories must be an object")
@@ -140,9 +142,26 @@ def verify_installed(
                 config_path, checkpoint_path = policy_paths(
                     glucoalg_dir, cohort, algorithm, seed
                 )
+                checkpoint_hash = seed_record.get("checkpoint_sha256")
+                if legacy_manifest:
+                    checkpoint_records = seed_record.get("checkpoints")
+                    if not isinstance(checkpoint_records, list):
+                        raise RuntimeError(
+                            f"{manifest_path}: missing legacy checkpoint records "
+                            f"for {repo_id} seed{seed}"
+                        )
+                    checkpoint_hash = next(
+                        (
+                            item.get("sha256")
+                            for item in checkpoint_records
+                            if isinstance(item, dict)
+                            and item.get("filename") == f"epoch-{EPOCH}.pt"
+                        ),
+                        None,
+                    )
                 expected_hashes = {
                     config_path: seed_record.get("config_sha256"),
-                    checkpoint_path: seed_record.get("checkpoint_sha256"),
+                    checkpoint_path: checkpoint_hash,
                 }
                 for installed_path, expected_hash in expected_hashes.items():
                     if not installed_path.is_file():
@@ -196,6 +215,10 @@ def main() -> None:
         return
     if args.download_dir is None:
         parser.error("--download-dir is required unless --verify-only is used")
+
+    # Keep the offline verification path usable on evaluation hosts that do
+    # not need (or intentionally do not install) the Hugging Face client.
+    from huggingface_hub import snapshot_download
 
     download_dir = args.download_dir.resolve()
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")

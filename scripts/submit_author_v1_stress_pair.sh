@@ -3,8 +3,12 @@
 # Submit one algorithm as paired no-Shield / predictive-Shield stress arrays.
 set -euo pipefail
 
-ALGORITHM="${1:?Usage: $0 ALGORITHM {nominal|sensor_sigma15|unannounced_meal_60g} [episodes] [replicate_id] [penalty] [result_collection]}"
-STRESS_SCENARIO="${2:?Usage: $0 ALGORITHM {nominal|sensor_sigma15|unannounced_meal_60g} [episodes] [replicate_id] [penalty] [result_collection]}"
+ALGORITHM="${1:?Usage: $0 ALGORITHM STRESS_SCENARIO [episodes] [replicate_id] [penalty] [result_collection]}"
+REQUESTED_STRESS_SCENARIO="${2:?Usage: $0 ALGORITHM STRESS_SCENARIO [episodes] [replicate_id] [penalty] [result_collection]}"
+case "${REQUESTED_STRESS_SCENARIO}" in
+    sensor_sigma15) STRESS_SCENARIO="gaussian_sigma15" ;;
+    *) STRESS_SCENARIO="${REQUESTED_STRESS_SCENARIO}" ;;
+esac
 EPISODES="${3:-1}"
 REPLICATE_ID="${4:-0}"
 LOGIT_PENALTY="${5:-10}"
@@ -19,7 +23,7 @@ case "${ALGORITHM}" in
     *) echo "Unsupported algorithm: ${ALGORITHM}" >&2; exit 2 ;;
 esac
 case "${STRESS_SCENARIO}" in
-    nominal|sensor_sigma15|unannounced_meal_60g) ;;
+    nominal|gaussian_sigma15|bias_positive|bias_negative|random_walk_drift|dropout_markov_v1|unannounced_meal_60g) ;;
     *) echo "Unsupported stress scenario: ${STRESS_SCENARIO}" >&2; exit 2 ;;
 esac
 if [[ ! "${EPISODES}" =~ ^[1-9][0-9]*$ ]]; then
@@ -40,7 +44,11 @@ fi
 algorithm_slug=$(printf '%s' "${ALGORITHM}" | tr '[:upper:]' '[:lower:]')
 case "${STRESS_SCENARIO}" in
     nominal) scenario_slug="nom" ;;
-    sensor_sigma15) scenario_slug="sensor15" ;;
+    gaussian_sigma15) scenario_slug="gauss15" ;;
+    bias_positive) scenario_slug="biasp10" ;;
+    bias_negative) scenario_slug="biasm10" ;;
+    random_walk_drift) scenario_slug="drift003" ;;
+    dropout_markov_v1) scenario_slug="gapmarkov" ;;
     unannounced_meal_60g) scenario_slug="hidden60" ;;
 esac
 

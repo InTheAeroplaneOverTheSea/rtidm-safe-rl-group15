@@ -10,9 +10,6 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
-from huggingface_hub import snapshot_download
-
-
 DEFAULT_REVISIONS_FILE = (
     Path(__file__).resolve().parents[1] / "configs" / "author_v1_hf_revisions.json"
 )
@@ -103,6 +100,9 @@ def main() -> None:
         return
     if args.download_dir is None:
         parser.error("--download-dir is required unless --verify-only is used")
+
+    # Offline evaluation only needs the pinned manifest/hash verifier.
+    from huggingface_hub import snapshot_download
 
     snapshot_root = Path(
         snapshot_download(
