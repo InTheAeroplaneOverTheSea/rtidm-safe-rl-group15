@@ -327,6 +327,7 @@ def evaluate_model(env: DiabetesEnvs, actor: nn.Module, normalizer: SimpleNormal
     episode_costs = []
     episode_lengths = []
     episode_metrics = []
+    forecast_records = []
     sample_time_min = getattr(env, 'sample_time', 5)
     actor_obs_dim = getattr(actor, 'obs_dim', env.observation_space.shape[0])
 
@@ -444,7 +445,24 @@ def evaluate_model(env: DiabetesEnvs, actor: nn.Module, normalizer: SimpleNormal
                 original_obs_tensor = torch.FloatTensor(obs_for_model).unsqueeze(0)
                 action_dist = actor(obs_tensor, original_obs_tensor)
                 action = action_dist.sample()
-                
+
+
+                shield = actor.shield
+
+                if shield is not None and hasattr(shield, "last_prediction"):
+                    prediction = shield.last_prediction
+
+                    forecast_records.append({
+                        "step": episode_length,
+                        "status": shield.last_prediction_status,
+                        "action_pairs": shield.last_action_pairs,
+                        "predictions": (
+                            prediction.tolist()
+                            if prediction is not None else None
+                        ),
+                    })
+
+
                 # Ensure correct type/shape for the environment
                 if isinstance(env.action_space, gym.spaces.MultiDiscrete):
                     action_env = action.detach().cpu().numpy().astype(np.int64)
@@ -530,6 +548,14 @@ def evaluate_model(env: DiabetesEnvs, actor: nn.Module, normalizer: SimpleNormal
             history['scenario_meal_avg'].append(float(np.asarray(info.get('scenario_meal_avg', 0.0)).squeeze()))
             
             obs_single = next_obs_single
+            forecast_path = os.path.join(
+                action_out_dir,
+                f"episode_{episode}_forecasts.json"
+            )
+
+            with open(forecast_path, "w", encoding="utf-8") as f:
+                json.dump(forecast_records, f, indent=2)
+
         
         # Calculate episode metrics
         if glucose_values:

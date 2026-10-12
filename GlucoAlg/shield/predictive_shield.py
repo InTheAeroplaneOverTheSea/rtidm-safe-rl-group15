@@ -496,6 +496,14 @@ class Shield:
             ]
             preds = self._predict_lower_bounds_batch(action_pairs)
             if preds is not None:
+                self.last_prediction = (
+                preds.detach().float().cpu().numpy().copy()
+                )
+                self.last_action_pairs = list(action_pairs)
+                self.last_prediction_status = "available"
+            else:
+                self.last_prediction_status = "warmup_or_unavailable"
+            if preds is not None:
                 min_preds = preds.min(dim=1).values
                 max_preds = preds.max(dim=1).values
                 for idx, (level, meal_level) in enumerate(action_pairs):
