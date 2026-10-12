@@ -1,6 +1,6 @@
 # Author-v1 Shield sensor-noise stress-test tutorial for SURF
 
-Last updated: 2026-10-11
+Last updated: 2026-10-12
 
 This is the step-by-step team tutorial for running the author-v1 T1D policies
 with and without the predictive Shield under matched sensor-noise stress. It
@@ -20,52 +20,46 @@ The unexpected-meal study is intentionally outside this matrix. Use
 [`AUTHOR_V1_UNANNOUNCED_MEAL_TUTORIAL.md`](AUTHOR_V1_UNANNOUNCED_MEAL_TUTORIAL.md)
 for its protocol, comparison groups, and commands.
 
-## 1. Short version: run calibration first
+## 1. Short version for teammates
 
-Do not submit the full eight-algorithm matrix yet. After completing the shared
-SURF setup in Section 4, the coordinator submits only the one-cell CPO
-calibration:
+The CPO sensor calibration is complete. Collection
+`author_v1_stress_calibration_v2` passed the structural analyzer, and the six
+primary scenarios in Section 2 are frozen. Teammates must **not** rerun the
+16-job calibration gate. Each teammate only needs to:
+
+1. refresh the SURF environment and pinned author-v1 assets with Section 4;
+2. confirm their two assigned algorithms in Section 5;
+3. run the six commands in Section 7 for each assigned algorithm;
+4. monitor with Section 8 and validate with Section 9.
+
+The shortest start is:
 
 ```bash
 cd "$HOME/projects/rtidm-safe-rl-group15"
 git switch main
 git pull --ff-only
-
-bash scripts/submit_author_v1_cpo_stress_calibration.sh 10 0 10
+setup_job_raw=$(sbatch --parsable jobs/setup_surf.slurm)
+setup_job=${setup_job_raw%%;*}
+echo "setup job: $setup_job"
 ```
 
-This submits eight scenarios times two conditions, all restricted to array cell
-`0` (`child#002`, CPO policy seed `0`). Each job runs ten literal episode seeds
-`22` through `31`. It does not release cells `1-80` and does not submit any
-other algorithm. The calibration helper requests eight hours per job by
-default, overriding the evaluation job's one-hour full-matrix default. To use a
-different limit explicitly, set `CALIBRATION_TIME_LIMIT` in
-`[days-]HH:MM:SS` format.
-
-Do not repeatedly monitor the jobs. Record the printed job IDs, log out, and
-check them later using the commands in Section 8. After they finish, run:
-
-```bash
-python scripts/analyze_author_v1_cpo_stress_calibration.py \
-  author_v1_stress_calibration
-```
-
-Only after the diagnostics pass and the drift severity is frozen should the
-team use the full-matrix helpers.
+Wait for that setup job, then finish all of Section 4 before submitting any
+evaluation. Section 6 records the completed calibration decision and contains
+coordinator-only rerun instructions in case the stress implementation changes.
 
 ## 2. What stress is actually applied
 
 The intended primary matrix contains six canonical sensor scenarios, including
 the matched nominal control:
 
-| Scenario | Intervention | Status before calibration |
+| Scenario | Intervention | Primary-matrix status |
 | --- | --- | --- |
-| `nominal` | unchanged author-v1 noise configuration | fixed |
-| `gaussian_sigma15` | replace minute-level Gaussian sigma `1.5` with `15 mg/dL` | fixed |
-| `bias_positive` | set constant additive CGM bias to `+10 mg/dL` | candidate fixed value |
-| `bias_negative` | set constant additive CGM bias to `-10 mg/dL` | candidate fixed value |
-| `random_walk_drift` | set per-minute scale-walk sigma to `0.003` | provisional |
-| `dropout_markov_v1` | five-minute Markov gaps, entry `0.003`, recovery `0.2917` | candidate fixed model |
+| `nominal` | unchanged author-v1 noise configuration | frozen |
+| `gaussian_sigma15` | replace minute-level Gaussian sigma `1.5` with `15 mg/dL` | frozen |
+| `bias_positive` | set constant additive CGM bias to `+10 mg/dL` | frozen |
+| `bias_negative` | set constant additive CGM bias to `-10 mg/dL` | frozen |
+| `random_walk_drift` | set per-minute scale-walk sigma to `0.003` | frozen after calibration |
+| `dropout_markov_v1` | five-minute Markov gaps, entry `0.003`, recovery `0.2917` | frozen |
 
 `sensor_sigma15` remains an accepted input alias, but scripts normalize it to
 `gaussian_sigma15`; it must not create a separate result set. Calibration also
@@ -96,10 +90,11 @@ produce an exact ten-unit difference at every output sample.
 ### 2.3 Drift calibration
 
 The scale walk is updated `10080` times in a complete seven-day episode and is
-clipped to `[0.9, 1.1]`. The calibration compares `0.0025`, `0.003`, and
-`0.004` with nominal `0.002`. Freeze a value using scale-boundary occupancy,
-sensor clipping, and realized error statistics before examining which setting
-makes the Shield look better or worse.
+clipped to `[0.9, 1.1]`. Calibration compared `0.0025`, `0.003`, and `0.004`
+with nominal `0.002`. The primary value is now frozen at `0.003`: it produced a
+clear increase over nominal in scale-boundary occupancy without the stronger
+boundary concentration observed at `0.004`. The choice was made from sensor
+diagnostics before using Shield outcomes as a selection criterion.
 
 ### 2.4 Markov dropout
 
@@ -115,6 +110,50 @@ trace is supplied to the policy, predictive Shield, and GlucoSim's CGM-based
 meal/bolus gates. True physiological BG is retained only for outcome scoring.
 The Markov schedule uses an independent deterministic RNG stream, so it does
 not consume GlucoSim's physiology or action RNG.
+
+### 2.5 Why this design and why these values
+
+The original author-v1 study evaluates eight Safe-RL algorithms under
+physiological distribution shift and uses a learned BA-NODE forecast to filter
+unsafe candidate actions. Its guarantee depends on prediction reliability, and
+the paper explicitly calls for broader stress testing involving noise and rare
+events. Sensor corruption is therefore a targeted test of a dependency of the
+predictive Shield, not a claim that the original paper already evaluated these
+sensor faults ([Kwon, Lamp & Feng, 2026, author v1](https://arxiv.org/html/2601.21094v1),
+[published PMLR record](https://proceedings.mlr.press/v306/kwon26c.html)).
+
+The experiment isolates the Shield's *incremental* contribution. Every stressor
+is applied to both no-Shield and predictive-Shield arms with matched patient,
+checkpoint, meal schedule and episode seed. The matched nominal scenario
+separates ordinary closed-loop variation from the added sensor fault. Only one
+stress mechanism is changed at a time, so a result can be attributed to that
+mechanism rather than an uncontrolled mixture.
+
+The numeric values are the repository's locally calibrated choices. Literature
+provides precedent for the mechanism or magnitude, but does not validate these
+exact GlucoSim settings:
+
+| Scenario | Why the local value was retained |
+| --- | --- |
+| `gaussian_sigma15` | A tenfold increase over the pinned minute-level `1.5` setting. Five-minute averaging predicts a white-noise contribution near `6.7 mg/dL`; calibration increased realized error SD from about `6.3-6.6` to `9.2-9.4 mg/dL` without creating a separate second noise layer. |
+| `bias_positive`, `bias_negative` | `+/-10 mg/dL` is an explicit constant-bias level used in prior closed-loop in-silico testing, although that paper studied an ICU controller rather than T1D RL ([DeJournett & DeJournett, 2016](https://pmc.ncbi.nlm.nih.gov/articles/PMC5094333/)). Relative to matched nominal, calibration shifted mean sensor error by approximately `+8.9` to `+11.9` and `-10.1` to `-8.6 mg/dL`, so the configured fault was visible without escalating to the attachment's proposed `+/-20`. |
+| `random_walk_drift` | This is a local severity choice, not a literature-derived constant. Boundary occupancy progressed from roughly `0.66-1.27%` at nominal to `1.05-1.31%`, `1.68-1.88%`, and `2.37-2.54%` at sigma `0.0025`, `0.003`, and `0.004`; `0.003` was the interpretable middle bracket. |
+| `dropout_markov_v1` | Missing CGM has been tested in T1D RL at about one or two events per day lasting up to 30 minutes ([Emerson, Guy & McConville, 2023](https://arxiv.org/html/2204.03376)). Real CGM gaps have also been modeled with a fitted six-state Markov model ([Vettoretti et al., 2023](https://doi.org/10.1016/j.cmpb.2023.107700)). Our simpler two-state process is **not** a reproduction of either paper; local calibration realized about `0.71-0.79%` missing observations with mean gaps of `14-17` minutes, so it is labeled a mild, reproducible comparison condition. |
+
+Primary safety outcomes are calculated from hidden physiological `BG_hist`, not
+the deliberately corrupted CGM fed to the controller. Controller CSVs retain
+true BG, native CGM and exposed CGM so sensor-error diagnostics can be reported
+alongside TIR, Risk Index, CV and termination. This prevents a corrupted sensor
+from also becoming the sole judge of whether the corruption was safe; clinical
+closed-loop work has likewise shown that using the same unmodified CGM for both
+control and outcome assessment can bias treatment-effect estimates
+([Hovorka et al., 2013](https://pmc.ncbi.nlm.nih.gov/articles/PMC3540898/)).
+
+The one-episode full matrix is a discovery screen, not conclusive proof of a
+Shield failure. A candidate failure should be confirmed with additional
+predeclared replicate IDs/seeds and the same paired design. Parameter severity
+must not be tuned after looking for whichever setting makes the Shield perform
+worst.
 
 ## 3. Evaluation matrix and exact pairing
 
@@ -346,8 +385,17 @@ Run this block before anyone submits stress jobs:
   test -f patches/glucoalg_v1_stress_eval.patch
   test -f interface_new.py
   test -f scripts/author_v1_stress_hook.py
+  test -f configs/author_v1_hf_revisions.json
+  test -f scripts/download_t1d_baseline_checkpoints.py
+  test -f scripts/download_author_v1_transitions.py
+  test -x scripts/submit_author_v1_stress_pair.sh
+  test -x scripts/submit_author_v1_stress_matrix.sh
   test -x scripts/submit_author_v1_cpo_stress_calibration.sh
   test -x scripts/analyze_author_v1_cpo_stress_calibration.py
+  test -x scripts/aggregate_author_v1_t1d.py
+  test -x scripts/validate_author_v1_stress_pairing.py
+  test -x scripts/summarize_author_v1_validation_stress.py
+  test -f external/GlucoAlg/saved_files/author_v1_transition_manifest.json
   test -f external/GlucoAlg/saved_files/dynamics_predictor/ba_node_b5_p24_h24/42/config.yaml
   test -f external/GlucoAlg/saved_files/dynamics_predictor/ba_node_b5_p24_h24/42/best_model.pth
   test "$(find external/GlucoAlg/saved_files/env_transitions \
@@ -359,6 +407,20 @@ Run this block before anyone submits stress jobs:
     3e8f7e48e8606f7136bd372898fd855d84fc959a70736cdf4b8db34c88063ba0 \
     author_v1_GlucoSim_6522d49.tar.gz \
     | sha256sum --check --strict
+
+  "${RTIDM_VENV:-$HOME/venvs/rtidm}/bin/python" \
+    scripts/download_t1d_baseline_checkpoints.py \
+    --glucoalg-dir external/GlucoAlg \
+    --manifest author_v1_all_baselines_evaluation/t1d_checkpoint_manifest.json \
+    --revisions-file configs/author_v1_hf_revisions.json \
+    --algorithms CPO CUP FOCOPS OnCRPO PCPO PPOLag RCPO TRPOLag \
+    --verify-only
+
+  "${RTIDM_VENV:-$HOME/venvs/rtidm}/bin/python" \
+    scripts/download_author_v1_transitions.py \
+    --glucoalg-dir external/GlucoAlg \
+    --revisions-file configs/author_v1_hf_revisions.json \
+    --verify-only
 
   echo "shared stress preflight passed"
 )
@@ -391,40 +453,55 @@ printf '%s\n' "${MY_ALGORITHMS[@]}"
 
 This variable disappears after logout and does not change the repository.
 
-## 6. CPO calibration gate before the full team run
+## 6. Completed CPO calibration gate
 
-Submit exactly one patient/policy cell, ten episodes, both conditions:
+No teammate action is required in this section. The completed decision is:
 
-```bash
-bash scripts/submit_author_v1_cpo_stress_calibration.sh 10 0 10
+```text
+Calibration collection: author_v1_stress_calibration_v2
+Analyzer status: PASS
+Cell: CPO, child#002, policy seed 0, array index 0
+Episode seeds: 22 through 31
+Approved drift sigma: 0.003 per internal minute
+Primary sensor scenarios: nominal, gaussian_sigma15, bias_positive,
+  bias_negative, random_walk_drift, dropout_markov_v1
+Selection rule: sensor diagnostics were reviewed before Shield outcome effects
+Full matrix authorized: yes
 ```
 
-The helper requests `08:00:00` per calibration job. This is intentional: a
-predictive-Shield smoke episode that terminates early is not a safe basis for
-estimating the runtime of ten complete seven-day episodes. Override only when
-needed, for example:
+The gate checked eight calibration scenarios times two arms: the six primary
+scenarios plus drift `0.0025` and `0.004` brackets. The analyzer checked literal
+seeds, ten detailed-result rows, nonempty controller traces, true-BG outcome
+source, exact scenario parameters, effective native-noise configuration, trace
+lengths, Markov gap metadata and finite diagnostics.
+
+Only the coordinator should repeat calibration, and only after a change to the
+sensor implementation or parameter set. A repeat must use a new collection:
 
 ```bash
-CALIBRATION_TIME_LIMIT=10:00:00 \
-  bash scripts/submit_author_v1_cpo_stress_calibration.sh 10 0 10
+RESULT_COLLECTION=author_v1_stress_calibration_YYYYMMDD
+
+CALIBRATION_TIME_LIMIT=08:00:00 \
+  bash scripts/submit_author_v1_cpo_stress_calibration.sh \
+  10 0 10 "$RESULT_COLLECTION"
 ```
 
-If the pinned archives and checkpoints are already present but the refreshed
-environment setup is still queued, the calibration may be submitted now with
-an `afterok` dependency instead of polling the setup job:
+The helper requests eight hours per job, submits no full arrays, and refuses to
+append to an existing calibration record. If the command was already used,
+inspect or retry the recorded jobs instead of rerunning it with the same
+collection name.
+
+If the refreshed environment setup is still queued, the calibration can depend
+on that setup job:
 
 ```bash
 CALIBRATION_AFTEROK_JOB_ID="$setup_job" \
-  bash scripts/submit_author_v1_cpo_stress_calibration.sh 10 0 10
+CALIBRATION_TIME_LIMIT=08:00:00 \
+  bash scripts/submit_author_v1_cpo_stress_calibration.sh \
+  10 0 10 "$RESULT_COLLECTION"
 ```
 
-Every calibration job will then start only if that one setup job completes
-successfully. Do not use this shortcut until the source archives and CPO
-checkpoint preflight in Section 4.6 has passed.
-
-This produces 16 independent jobs: eight calibration scenarios times two
-conditions. It deliberately does not use `submit_author_v1_stress_pair.sh`,
-because that helper would release the remaining 80 cells after smoke success.
+Use this only after the archive and checkpoint preflight in Section 4.6 passes.
 
 The calibration cell is:
 
@@ -436,23 +513,40 @@ array index: 0
 episode seeds: 22 through 31
 ```
 
-After every job reaches `COMPLETED`, run:
+After every repeat job reaches `COMPLETED`, validate the new collection:
 
 ```bash
 python scripts/analyze_author_v1_cpo_stress_calibration.py \
-  author_v1_stress_calibration
+  "$RESULT_COLLECTION"
 ```
 
-The analyzer checks the literal seeds, true-BG outcome source, required trace
-columns, finite diagnostics, and scenario metadata. It prints realized sensor
-error, minute-level scale-boundary occupancy, clipping, and gap count/duration.
-`PASS` confirms structural correctness; a human must still
-choose the drift strength from the three candidates without first selecting on
-Shield benefit.
+The analyzer checks the literal seeds, ten detailed-result rows, nonempty
+controller traces, true-BG outcome source, scenario parameters, effective
+native-noise configuration, trace lengths, Markov gap metadata and required
+finite diagnostics. It prints realized sensor error, scale-boundary occupancy,
+clipping and gap count/duration.
+
+`PASS` establishes structural correctness; it does not choose the drift level.
+For a future repeat, the coordinator must review the three drift diagnostics
+without first selecting on Shield outcome benefit. If the approved value differs
+from `0.003`, update `CANONICAL_STRESS_SCENARIOS`, the validator contract and
+this tutorial before submitting a new full matrix.
+
+Record the gate decision in the team handoff using this minimum template:
+
+```text
+Calibration collection:
+Repository commit:
+Analyzer status: PASS / FAIL
+Approved drift sigma:
+Decision date and coordinator:
+Diagnostic rationale (scale occupancy, clipping, realized error):
+Full matrix authorized: yes / no
+```
 
 ## 7. Submit assigned algorithms
 
-Only after calibration approval, submit one assigned algorithm for all six
+After completing the shared setup, submit one assigned algorithm for all six
 canonical scenarios:
 
 ```bash
@@ -517,18 +611,21 @@ Reusing replicate `0` intentionally reproduces the same disturbance seeds.
 
 ## 8. Monitor jobs and check outputs
 
-For the one-cell calibration, the submission record is:
+For the completed one-cell calibration, the coordinator can inspect the
+submission record with:
 
 ```bash
-RECORD=author_v1_stress_calibration/submitted_jobs.tsv
+RESULT_COLLECTION=author_v1_stress_calibration_v2
+RECORD="$RESULT_COLLECTION/submitted_jobs.tsv"
 column -t -s $'\t' "$RECORD"
 JOB_IDS=$(tail -n +2 "$RECORD" | cut -f9 | sort -u | paste -sd, -)
 squeue -j "$JOB_IDS"
 sacct -X -j "$JOB_IDS" --format=JobID,JobName,State,ExitCode,Elapsed
 ```
 
-It is not necessary to keep this command running. Log out and execute the same
-`sacct` command later. A finished calibration contains 16 top-level jobs and no
+For any future coordinator-only repeat, replace the collection name. It is not
+necessary to keep this command running. Log out and execute the same `sacct`
+command later. A finished calibration contains 16 top-level jobs and no
 dependent full arrays.
 
 Every submission is appended to:
@@ -605,6 +702,42 @@ result files are present.
 The validators use only the Python standard library and may run on the login
 node after simulations finish.
 
+### 9.1 Recommended one-command validation
+
+After all six scenarios finish for one assigned algorithm, run:
+
+```bash
+ALGORITHM=CUP
+EPISODES=1
+REPLICATE_ID=0
+PENALTY=10
+RESULT_COLLECTION=author_v1_stress_evaluation
+
+python scripts/summarize_author_v1_validation_stress.py \
+  "$RESULT_COLLECTION" \
+  --episodes "$EPISODES" \
+  --replicate-id "$REPLICATE_ID" \
+  --logit-penalty "$PENALTY" \
+  --algorithms "$ALGORITHM" \
+  --stress-scenarios \
+    gaussian_sigma15 bias_positive bias_negative \
+    random_walk_drift dropout_markov_v1 \
+  --expected-result-collection "$RESULT_COLLECTION" \
+  --output "validation_reports/${ALGORITHM}_sensor_stress_r${REPLICATE_ID}.txt"
+```
+
+This command validates nominal plus the five non-nominal sensor conditions,
+checks both Shield arms and their matched disturbances, and writes one plain
+text handoff report. It stops without writing a success report if any cell,
+metadata contract or pairing check fails. Run it separately for each assigned
+algorithm rather than allowing it to auto-discover another teammate's
+partially completed output.
+
+### 9.2 Per-scenario validation for troubleshooting
+
+Use the commands below when the one-command validation reports a specific
+failure or when separate raw validator logs are required.
+
 Set the values once:
 
 ```bash
@@ -657,6 +790,7 @@ python scripts/validate_author_v1_stress_pairing.py \
   "$BASE_ROOT" \
   "$SHIELD_ROOT" \
   --expected-episodes "$EPISODES" \
+  --replicate-id "$REPLICATE_ID" \
   --logit-penalty "$PENALTY" \
   | tee "validation_reports/${ALGORITHM}_${SCENARIO}_r${REPLICATE_ID}_pairing.txt"
 ```
@@ -697,7 +831,11 @@ The stress validator additionally checks:
 - the exact per-minute drift sigma for drift scenarios;
 - Markov entry/recovery probabilities and the planned gap schedule.
 
-Repeat Section 9 for every canonical scenario after calibration approval.
+Repeat Section 9 for every canonical scenario.
+
+These validators establish completeness, code/config identity and matched
+disturbances. They do not by themselves declare that the Shield broke; the
+coordinator performs the paired outcome analysis described next.
 
 ## 10. Interpret whether the Shield breaks
 
@@ -724,7 +862,10 @@ Metric directions are:
 Do not define a Shield break solely as lower mean TIR. Flag cells or aggregate
 conditions where the Shield increases early termination, Risk Index, or
 variability as well. Report the fraction of paired cells in which Shield
-worsens each clinical metric, not only the overall mean.
+worsens each clinical metric, not only the overall mean. A poor Shield result
+in the one-episode discovery screen is a candidate failure, not final proof;
+confirm it with predeclared additional replicate IDs and paired uncertainty or
+statistical analysis.
 
 The main control is the `nominal` run made by this stress workflow with the
 same replicate id. Do not compare against an old nominal result produced with
@@ -819,7 +960,8 @@ Potential Shield break indicators:
 Notes / unresolved discrepancies:
 ```
 
-Attach the three files written under `validation_reports/`.
+Attach the combined report written by Section 9.1. If troubleshooting used
+Section 9.2, attach the three per-scenario validator logs as well.
 
 ## 13. Final checklist
 
@@ -830,12 +972,15 @@ Attach the three files written under `validation_reports/`.
 - [ ] Checkpoints come from immutable January revisions at epoch `2441`.
 - [ ] The checkpoint manifest exists and verification passes.
 - [ ] The BA-NODE predictor hashes match Section 4.5.
+- [x] CPO calibration collection `author_v1_stress_calibration_v2` passed its analyzer.
+- [x] The primary drift severity is frozen at `0.003` before full-matrix submission.
 - [ ] The exact repository algorithm name is used.
 - [ ] All six canonical sensor scenarios use the same replicate id.
-- [ ] Both smoke jobs pass before the full team submission.
+- [ ] Both smoke jobs pass before their dependent full arrays start.
 - [ ] Both conditions contain 81 cells and all four required output files per cell.
-- [ ] Both aggregation validators print `Validation: PASS`.
-- [ ] The paired validator prints `Pairing validation: PASS`.
+- [ ] The one-command validator writes the assigned algorithm's sensor-stress report.
+- [ ] If run separately, both aggregation validators print `Validation: PASS`.
+- [ ] If run separately, the paired validator prints `Pairing validation: PASS`.
 - [ ] TIR, Risk Index, CV, and early termination are reported together.
 - [ ] Stress results are compared with the new matched nominal, not an old baseline collection.
 - [ ] Unexpected-meal runs follow the separate unexpected-meal tutorial.
@@ -860,3 +1005,33 @@ surf_environment_freeze.txt
 Commit only agreed scripts, patches, documentation, and compact text reports.
 Always inspect `git status --short` and stage exact paths; do not use
 `git add .` in a checkout containing evaluation outputs.
+
+## 15. References and scope notes
+
+- Kwon, M., Lamp, J. & Feng, L. (2026). *Safety Generalization Under
+  Distribution Shift in Safe Reinforcement Learning: A Diabetes Testbed*.
+  [Author v1](https://arxiv.org/abs/2601.21094v1) and
+  [PMLR publication](https://proceedings.mlr.press/v306/kwon26c.html).
+- Emerson, H., Guy, M. & McConville, R. (2023). *Offline Reinforcement
+  Learning for Safer Blood Glucose Control in People with Type 1 Diabetes*.
+  [DOI](https://doi.org/10.1016/j.jbi.2023.104376) and
+  [full text](https://arxiv.org/html/2204.03376).
+- DeJournett, L. & DeJournett, J. (2016). *In Silico Testing of an
+  Artificial-Intelligence-Based Artificial Pancreas Designed for Use in the
+  Intensive Care Unit Setting*.
+  [DOI/full text](https://pmc.ncbi.nlm.nih.gov/articles/PMC5094333/).
+- Vettoretti, M., Drecogna, M., Del Favero, S., Facchinetti, A. & Sparacino,
+  G. (2023). *A Markov Model of Gap Occurrence in Continuous Glucose
+  Monitoring Data for Realistic In Silico Clinical Trials*.
+  [DOI](https://doi.org/10.1016/j.cmpb.2023.107700) and
+  [author-hosted manuscript](https://www.research.unipd.it/retrieve/a72491dc-d93b-4572-b5a9-e1fd969a6a1e/1-s2.0-S0169260723003656-main.pdf).
+- Hovorka, R., Nodale, M., Haidar, A. & Wilinska, M. E. (2013). *Assessing
+  Performance of Closed-Loop Insulin Delivery Systems by Continuous Glucose
+  Monitoring: Drawbacks and Way Forward*.
+  [DOI/full text](https://pmc.ncbi.nlm.nih.gov/articles/PMC3540898/).
+
+The cited studies motivate stress mechanisms and evaluation choices. They do
+not establish that this repository's sigma, transition probabilities or
+failure threshold are clinically universal. The executable local scenario
+registry and the accepted local calibration, not the attached planning
+document's earlier proposals, define the parameters used in this experiment.

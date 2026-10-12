@@ -65,8 +65,16 @@ if [[ ! "${REPLICATE_ID}" =~ ^[0-9]+$ ]]; then
     echo "Replicate id must be a nonnegative integer, got ${REPLICATE_ID}" >&2
     exit 2
 fi
+if [[ ! "${LOGIT_PENALTY}" =~ ^[0-9]+$ ]]; then
+    echo "Logit penalty must be a nonnegative integer, got ${LOGIT_PENALTY}" >&2
+    exit 2
+fi
 if [[ ! "${RESULT_COLLECTION}" =~ ^[A-Za-z0-9._-]+$ ]]; then
     echo "Result collection must be a single safe directory name, got ${RESULT_COLLECTION}" >&2
+    exit 2
+fi
+if [[ ! "${TASK_INDEX}" =~ ^[0-9]+$ ]] || (( TASK_INDEX > 80 )); then
+    echo "SLURM_ARRAY_TASK_ID must be between 0 and 80, got ${TASK_INDEX}" >&2
     exit 2
 fi
 

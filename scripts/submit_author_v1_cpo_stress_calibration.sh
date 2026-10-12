@@ -43,6 +43,10 @@ if [[ ! "${RESULT_COLLECTION}" =~ ^[A-Za-z0-9._-]+$ ]]; then
     echo "Result collection must be a safe directory name" >&2
     exit 2
 fi
+if [[ ! "${LOGIT_PENALTY}" =~ ^[0-9]+$ ]]; then
+    echo "Logit penalty must be a nonnegative integer, got ${LOGIT_PENALTY}" >&2
+    exit 2
+fi
 if [[ -n "${AFTEROK_JOB_ID}" ]] && [[ ! "${AFTEROK_JOB_ID}" =~ ^[0-9]+$ ]]; then
     echo "CALIBRATION_AFTEROK_JOB_ID must be one Slurm job id" >&2
     exit 2
@@ -51,7 +55,7 @@ if [[ ! "${TIME_LIMIT}" =~ ^([0-9]+-)?[0-9]{1,2}:[0-9]{2}:[0-9]{2}$ ]]; then
     echo "CALIBRATION_TIME_LIMIT must use [days-]HH:MM:SS, got ${TIME_LIMIT}" >&2
     exit 2
 fi
-test -f "${JOB_SCRIPT}"
+test -x "${JOB_SCRIPT}"
 command -v sbatch >/dev/null
 
 DEPENDENCY_ARGS=()
@@ -60,9 +64,12 @@ if [[ -n "${AFTEROK_JOB_ID}" ]]; then
 fi
 
 mkdir -p "${RECORD_DIR}"
-if [[ ! -f "${RECORD}" ]]; then
-    printf 'submitted_at\tstress_scenario\treplicate_id\talgorithm\tcondition\tphase\tepisodes\ttask_index\tjob_id\n' > "${RECORD}"
+if [[ -e "${RECORD}" ]]; then
+    echo "Refusing to append to existing calibration record: ${RECORD}" >&2
+    echo "Use a new result collection or inspect/retry failed jobs manually." >&2
+    exit 2
 fi
+printf 'submitted_at\tstress_scenario\treplicate_id\talgorithm\tcondition\tphase\tepisodes\ttask_index\tjob_id\n' > "${RECORD}"
 
 for scenario in "${SCENARIOS[@]}"; do
     case "${scenario}" in

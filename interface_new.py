@@ -318,7 +318,12 @@ class GlucoSimInterface:
         if stress.cgm_noise_sigma is not None:
             updates["cgm_obs_sigma_mgdl"] = _finite_nonnegative(stress.cgm_noise_sigma, "cgm_noise_sigma")
         if stress.cgm_bias_mgdl is not None:
-            updates["cgm_bias_mgdl"] = float(stress.cgm_bias_mgdl)
+            bias = float(stress.cgm_bias_mgdl)
+            if not np.isfinite(bias):
+                raise ValueError(
+                    f"cgm_bias_mgdl must be finite, got {stress.cgm_bias_mgdl!r}"
+                )
+            updates["cgm_bias_mgdl"] = bias
         if stress.cgm_rw_sigma_bias is not None:
             updates["cgm_rw_sigma_bias"] = _finite_nonnegative(stress.cgm_rw_sigma_bias, "cgm_rw_sigma_bias")
         if stress.cgm_dropout_prob is not None:
@@ -353,11 +358,15 @@ class GlucoSimInterface:
                 raise ValueError(
                     "cgm_gap_recovery_prob must be greater than 0 and at most 1"
                 )
-            if isinstance(interval, bool) or not isinstance(interval, int) or interval < 1:
+            if (
+                isinstance(interval, (bool, np.bool_))
+                or not isinstance(interval, (int, np.integer))
+                or interval < 1
+            ):
                 raise ValueError(
                     "cgm_gap_sampling_interval_min must be a positive integer"
                 )
-            if interval != self.sample_time:
+            if int(interval) != self.sample_time:
                 raise ValueError(
                     "Markov gap sampling interval must match the controller "
                     f"sample_time ({self.sample_time} minutes), got {interval}"

@@ -19,3 +19,16 @@ venv/
 # Common temporary files
 *.log
 *.tmp
+
+# Generated author-v1 evaluation and staging artifacts
+author_v1_GlucoAlg_*.tar.gz
+author_v1_GlucoSim_*.tar.gz
+glucoalg_checkpoints*.zip
+author_v1_*evaluation/
+author_v1_*calibration*/
+author_v1_unannounced_meal_*/
+cpo_full_evaluation/
+v1_baseline_evaluation/
+validation_reports/
+slurm-*.out
+surf_environment_freeze.txt

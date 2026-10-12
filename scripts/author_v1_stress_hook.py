@@ -31,7 +31,8 @@ CANONICAL_STRESS_SCENARIOS = {
     "gaussian_sigma15": StressConfig(cgm_noise_sigma=15.0),
     "bias_positive": StressConfig(cgm_bias_mgdl=10.0),
     "bias_negative": StressConfig(cgm_bias_mgdl=-10.0),
-    # The 0.003 value is provisional until the CPO calibration is accepted.
+    # Primary value frozen at 0.003 after the CPO calibration; the 0.0025 and
+    # 0.004 entries below remain calibration-only sensitivity brackets.
     "random_walk_drift": StressConfig(cgm_rw_sigma_bias=0.003),
     "dropout_markov_v1": StressConfig(
         cgm_gap_entry_prob=0.003,

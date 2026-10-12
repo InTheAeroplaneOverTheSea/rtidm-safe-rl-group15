@@ -19,7 +19,7 @@ case "${STRESS_SCENARIO}" in
     nominal|gaussian_sigma15|bias_positive|bias_negative|random_walk_drift|dropout_markov_v1|unannounced_meal_60g) ;;
     *) echo "Unsupported stress scenario: ${STRESS_SCENARIO}" >&2; exit 2 ;;
 esac
-test -f "${PAIR_SCRIPT}"
+test -x "${PAIR_SCRIPT}"
 
 for algorithm in CPO CUP FOCOPS OnCRPO PCPO PPOLag RCPO TRPOLag; do
     bash "${PAIR_SCRIPT}" \
