@@ -66,6 +66,9 @@ The formal path is:
 | `scripts/check_author_v1_unannounced_meal_person_ac_status.sh` | check the Person A/C algorithms with one shared Slurm snapshot |
 | `scripts/submit_author_v1_unannounced_meal_validation_bridge.sh` | submit matched nominal and hidden-meal pairs for all eight algorithms |
 | `scripts/check_author_v1_unannounced_meal_validation_bridge_status.sh` | check the full bridge once and validate complete pairs |
+| `scripts/aggregate_author_v1_dual_outcomes.py` | recompute TIR, Risk, and CV from both true BG and exposed CGM controller traces |
+| `scripts/summarize_author_v1_validation_stress.py` | validate a completed 1- or 10-seed bridge and write both outcome sources to one plain-text report |
+| `scripts/submit_author_v1_person_ac_dual_10seed.sh` | submit the four Person A/C algorithms for dual-trace paper baseline plus matched nominal/hidden-meal bridge |
 
 `experiments/02_meal_shift_sanity.py`, `experiments/06_test_meal.py`, and the
 meal-shift portion of `test_interface.py` modify announced schedules. They are
@@ -412,6 +415,46 @@ python scripts/validate_author_v1_stress_pairing.py \
 
 Do not report the comparison until both aggregations print `Validation: PASS`
 and the pairing validator prints `Pairing validation: PASS`.
+
+### 6.1 Write one combined plain-text report
+
+After both scenarios are complete, run the summary script once. It reruns the
+arm aggregations and pairing checks, independently recomputes TIR, Risk, and CV
+from both true physiological BG and the exposed CGM seen by the policy/Shield,
+then writes all algorithms and scenarios to one Google-Docs-friendly text
+file. It does not query Slurm or submit jobs. It writes the final file
+atomically only after every requested check passes.
+
+For a one-seed collection:
+
+```bash
+python scripts/summarize_author_v1_validation_stress.py \
+  author_v1_unannounced_meal_validation_bridge_1seed \
+  --episodes 1 \
+  --output validation_reports/validation_stress_1seed_summary.txt
+```
+
+For the formal ten-seed collection:
+
+```bash
+python scripts/summarize_author_v1_validation_stress.py \
+  author_v1_person_ac_unannounced_meal_dual_bridge_10seed \
+  --episodes 10 \
+  --paper-baseline-collection author_v1_person_ac_paper_baseline_dual_10seed \
+  --output validation_reports/validation_stress_10seed_summary.txt
+```
+
+By default, the script discovers the algorithms and supported stress scenarios
+present in the collection. Use `--algorithms CPO CUP PCPO PPOLag` to restrict a
+report to an assignment, or `--stress-scenarios unannounced_meal_60g` to select
+only the unexpected-meal comparison. The output includes completeness, Slurm
+job IDs when the submission records are available, aggregation and pairing
+PASS states, mean and sample SD, Shield-minus-no-Shield changes, matched
+stress-minus-nominal changes, early terminations, delivered hidden meals, and
+potential Shield-break indicators. When `--paper-baseline-collection` is
+provided, the same file also includes both outcome sources for the original
+paper evaluator and labels bridge-nominal minus paper-baseline as a separate
+harness-change diagnostic; it is never used as the stress-effect denominator.
 
 ## 7. What to report
 

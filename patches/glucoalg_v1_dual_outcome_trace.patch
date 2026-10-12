@@ -1,0 +1,20 @@
+--- a/eval_run.py
++++ b/eval_run.py
+@@ -481,6 +481,8 @@
+             # Track glucose metrics
+             cgm_raw = info.get('cgm', obs_single[0])
+             cgm = float(np.asarray(cgm_raw).squeeze())
++            true_bg_raw = info['true_bg_mgdl']
++            true_bg = float(np.asarray(true_bg_raw).squeeze())
+             glucose_values.append(cgm)
+             
+             # Count hypoglycemic events (< 70 mg/dL)
+@@ -494,7 +496,7 @@
+             # Collect history data for animation
+             current_time = start_time + timedelta(minutes=episode_length) if render else datetime.now()
+             history['time'].append(current_time)
+-            history['BG'].append(cgm)  # Use CGM as BG for simplicity
++            history['BG'].append(true_bg)
+             history['CGM'].append(cgm)
+             history['CHO'].append(float(np.asarray(info.get('cob', obs_single[2]))))
+             action_record = np.array(action_env[0] if isinstance(action_env, np.ndarray) and action_env.ndim > 1 else action_env, copy=True)

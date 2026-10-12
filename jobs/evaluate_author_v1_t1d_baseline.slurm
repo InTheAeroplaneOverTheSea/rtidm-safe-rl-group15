@@ -12,8 +12,8 @@
 
 set -euo pipefail
 
-ALGORITHM="${1:?Usage: $0 ALGORITHM {no_shield|predictive} [episodes] [penalty] [result_collection]}"
-CONDITION="${2:?Usage: $0 ALGORITHM {no_shield|predictive} [episodes] [penalty] [result_collection]}"
+ALGORITHM="${1:?Usage: $0 ALGORITHM CONDITION [episodes] [penalty] [result_collection]}"
+CONDITION="${2:?Usage: $0 ALGORITHM CONDITION [episodes] [penalty] [result_collection]}"
 EPISODES="${3:-1}"
 LOGIT_PENALTY="${4:-10}"
 RESULT_COLLECTION="${5:-author_v1_all_baselines_evaluation}"
@@ -24,6 +24,8 @@ GLUCOSIM_ARCHIVE="${PROJECT_DIR}/author_v1_GlucoSim_6522d49.tar.gz"
 GLUCOALG_ARCHIVE_SHA256="e2f775bd0a75fbbb657628708e98efe6d684dd5109edf7268c6e396cb5aa253f"
 GLUCOSIM_ARCHIVE_SHA256="3e8f7e48e8606f7136bd372898fd855d84fc959a70736cdf4b8db34c88063ba0"
 GLUCOSIM_COMPAT_PATCH="${PROJECT_DIR}/patches/glucosim_v1_python313.patch"
+GLUCOSIM_DIAGNOSTICS_PATCH="${PROJECT_DIR}/patches/glucosim_v1_stress_diagnostics.patch"
+GLUCOALG_DUAL_TRACE_PATCH="${PROJECT_DIR}/patches/glucoalg_v1_dual_outcome_trace.patch"
 POLICY_BASE="${PROJECT_DIR}/external/GlucoAlg/saved_models/t1d"
 POLICY_MANIFEST="${PROJECT_DIR}/author_v1_all_baselines_evaluation/t1d_checkpoint_manifest.json"
 TRANSITIONS_SOURCE="${PROJECT_DIR}/external/GlucoAlg/saved_files/env_transitions"
@@ -40,6 +42,14 @@ case "${CONDITION}" in
 esac
 if [[ ! "${RESULT_COLLECTION}" =~ ^[A-Za-z0-9._-]+$ ]]; then
     echo "Result collection must be a single safe directory name, got ${RESULT_COLLECTION}" >&2
+    exit 2
+fi
+if [[ ! "${EPISODES}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "Episodes must be a positive integer, got ${EPISODES}" >&2
+    exit 2
+fi
+if [[ ! "${LOGIT_PENALTY}" =~ ^[0-9]+$ ]]; then
+    echo "Logit penalty must be a nonnegative integer, got ${LOGIT_PENALTY}" >&2
     exit 2
 fi
 
@@ -64,6 +74,8 @@ test -f "${VENV_DIR}/bin/activate"
 test -f "${GLUCOALG_ARCHIVE}"
 test -f "${GLUCOSIM_ARCHIVE}"
 test -f "${GLUCOSIM_COMPAT_PATCH}"
+test -f "${GLUCOSIM_DIAGNOSTICS_PATCH}"
+test -f "${GLUCOALG_DUAL_TRACE_PATCH}"
 test -f "${POLICY_MANIFEST}"
 test -n "${TMPDIR:-}"
 test -d "${TMPDIR}"
@@ -100,6 +112,8 @@ mkdir -p "${WORK_GLUCOALG}" "${WORK_GLUCOSIM}"
 tar -xzf "${GLUCOALG_ARCHIVE}" -C "${WORK_GLUCOALG}"
 tar -xzf "${GLUCOSIM_ARCHIVE}" -C "${WORK_GLUCOSIM}"
 patch --batch --forward -p1 -d "${WORK_GLUCOSIM}" < "${GLUCOSIM_COMPAT_PATCH}"
+patch --batch --forward -p1 -d "${WORK_GLUCOSIM}" < "${GLUCOSIM_DIAGNOSTICS_PATCH}"
+patch --batch --forward -p1 -d "${WORK_GLUCOALG}" < "${GLUCOALG_DUAL_TRACE_PATCH}"
 
 # The January simulator uses its former glucobench package name internally.
 ln -s "${WORK_GLUCOSIM}/glucosim" "${WORK_GLUCOSIM}/glucobench"
@@ -138,6 +152,11 @@ sync_results() {
             echo "glucoalg_commit=50d3134fd6f0e01019295be0d6b99f110f794753"
             echo "glucosim_commit=6522d49ee1e6c1fd34f287519a5d41df735bbd38"
             echo "glucosim_compat_patch=python313_typing_only"
+            echo "glucosim_diagnostics_patch_sha256=$(sha256sum "${GLUCOSIM_DIAGNOSTICS_PATCH}" | cut -d ' ' -f 1)"
+            echo "glucoalg_dual_trace_patch_sha256=$(sha256sum "${GLUCOALG_DUAL_TRACE_PATCH}" | cut -d ' ' -f 1)"
+            echo "dual_outcome_trace=true"
+            echo "canonical_outcome_source=exposed_sensor_cgm"
+            echo "available_outcome_sources=true_bg,exposed_sensor_cgm"
             echo "algorithm=${ALGORITHM}"
             echo "condition=${CONDITION}"
             echo "result_collection=${RESULT_COLLECTION}"
